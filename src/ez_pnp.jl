@@ -1,7 +1,5 @@
 #!/usr/bin/env julia
-#module EzPnP
-#push!(LOAD_PATH, "/home/gstavrinos/jultemp")
-#push!(LOAD_PATH, "/home/gstavrinos")
+#module ez_pnp
 using RobotOS
 using PyCall
 
@@ -9,12 +7,12 @@ using PyCall
 @pyimport rospy
 
 @rosimport geometry_msgs.msg: PoseStamped
-#@rosimport schunk_pg70.srv: set_position
+@rosimport schunk_pg70.srv: set_position
 
 rostypegen()
 
 using .geometry_msgs.msg
-#using .schunk_pg70.srv
+using .schunk_pg70.srv
 
 abstract type EzMove end
 
@@ -33,10 +31,6 @@ struct GripperMove <: EzMove
     velocity::Float64
     acceleration::Float64
 end
-
-# function move(m::EzMove)
-#     m.move()
-# end
 
 struct EzPnP
     # Vars in the struct you can configure.
@@ -71,7 +65,7 @@ struct EzPnP
 end
 
 function move(ep::EzPnP, am::ArmMove)
-    ep.arm_move_group[:set_pose_target](ep.moves[1].pose)
+    ep.arm_move_group[:set_pose_target](am.pose)
     return ep.arm_move_group[:go]()
 end
 
@@ -90,71 +84,41 @@ function start(ep::EzPnP)
     planning_frame = ep.robot_commander[:get_planning_frame]()
     println(planning_frame)
 
-    #gripper_service = ServiceProxy("schunk_pg70/set_position", set_position)
-    #wait_for_service("schunk_pg70/set_position")
-    #gripper_service(set_positionRequest(60, 80, 80))
-    while ! is_shutdown() && !isempty(ep.moves)
+    move_index = 1
+
+    while !is_shutdown() && !isempty(ep.moves)
         try
             suc = false
             # TODO implement move(ep::EzPnP, gm::GripperMove)
-            suc = move(ep, ep.moves[1])
+            if ep.print_status
+                println("Attempting...: "*ep.moves[move_index].name)
+            end
+            suc = move(ep, ep.moves[move_index])
             if suc
-                println("HELL YEAH!")
-                popfirst!(ep.moves)
-                #sleep(1)
+                if ep.print_status
+                    println("Success...: "*ep.moves[move_index].name)
+                end
+                if ep.moves[move_index] isa GripperMove || move_index == length(ep.moves)
+                    deleteat!(ep.moves, 1:move_index)
+                    move_index = 1
+                else
+                    move_index += 1
+                end
+                sleep(1)
             end
             if !suc && ep.reset_on_failure
+                move_index = 1
                 println("Resetting position due to failure")
                 ep.arm_move_group[:set_named_target](ep.default_position_name)
                 ep.arm_move_group[:go]()
             end
         catch e
-            println("***************")
             println(e)
-            println("***************")
         end
+    end
+    if ep.print_status
+        println("Done! :)")
     end
 
 end
-
-# #################################### TEST ####################################
-e = EzPnP("up", 1.0, 1.0, 10, 10.0, "arm", true, true, "ezpnp_tester")
-
-# Pick distant location
-pick_trans = [-0.25, -0.18, 0.075]
-p = PoseStamped()
-p.header.stamp = RobotOS.now()
-p.header.frame_id = "base_link"
-p.pose.position.x = pick_trans[1]
-p.pose.position.y = pick_trans[2]
-p.pose.position.z = pick_trans[3] + 0.4
-# Top-down orientation
-p.pose.orientation.x = -0.71171
-p.pose.orientation.y = -0.017323
-p.pose.orientation.z = 0.0038264
-p.pose.orientation.w = 0.70225
-
-am = ArmMove("Pick: distant location", p)
-addMove(e, am)
-
-# Pick approach
-p2 = PoseStamped()
-p2.header.stamp = RobotOS.now()
-p2.header.frame_id = "base_link"
-p2.pose.position.x = pick_trans[1]
-p2.pose.position.y = pick_trans[2]
-p2.pose.position.z = pick_trans[3] + 0.25
-# Top-down orientation
-p2.pose.orientation.x = -0.71171
-p2.pose.orientation.y = -0.017323
-p2.pose.orientation.z = 0.0038264
-p2.pose.orientation.w = 0.70225
-
-am = ArmMove("Pick: approach location", p2)
-addMove(e, am)
-
-am = ArmMove("Pick: retreat location", p)
-addMove(e, am)
-
-start(e)
 #end
