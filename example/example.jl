@@ -5,7 +5,7 @@ using RobotOS
 #using ez_pnp
 include("../src/ez_pnp.jl")
 
-e = EzPnP("up", 1.0, 1.0, 10, 10.0, "arm", true, true, "ezpnp_tester")
+e = EzPnP("up", 1.0, 1.0, "gripper", 10, 10.0, "arm", true, true, "ezpnp_tester")
 
 # Pick distant location
 pick_trans = [-0.25, -0.18, 0.075]
