@@ -37,17 +37,18 @@ struct EzPnP
     default_position_name::String
     time_between_moves::Float64
     time_between_grips::Float64
+    gripper_group_name::String
     planning_attempts::Int32
     planning_time::Float64
     arm_group_name::String
     reset_on_failure::Bool
     print_status::Bool
     node_name::String
-    # -------------------------------------
+    # -----------------------------------------------------
 
     # This var can be modified using the addMove func.
     moves::Array{EzMove}
-    # ------------------------------------------------
+    # -----------------------------------------------------
 
     # MoveIt-related vars. There is no need to be modified.
     robot_commander::PyObject
@@ -55,11 +56,11 @@ struct EzPnP
     arm_move_group::PyObject
     # -----------------------------------------------------
 
-    function EzPnP(dpn, tbm, tbg, pa, pt, agn, rof, ps, nn)
+    function EzPnP(dpn, tbm, tbg, ggn, pa, pt, agn, rof, ps, nn)
         init_node(nn)
         moveit_commander.roscpp_initialize(ARGS)
 
-        return new(dpn, tbm, tbg, pa, pt, agn, rof, ps, nn, [], moveit_commander.RobotCommander(), moveit_commander.PlanningSceneInterface(), moveit_commander.MoveGroupCommander(agn))
+        return new(dpn, tbm, tbg, ggn, pa, pt, agn, rof, ps, nn, [], moveit_commander.RobotCommander(), moveit_commander.PlanningSceneInterface(), moveit_commander.MoveGroupCommander(agn))
     end
 
 end
@@ -83,6 +84,9 @@ function start(ep::EzPnP)
 
     planning_frame = ep.robot_commander[:get_planning_frame]()
     println(planning_frame)
+
+    # TODO get attached objects and known objects and print a warning
+    # if you don't find anyh attached objects.
 
     move_index = 1
 
@@ -121,4 +125,31 @@ function start(ep::EzPnP)
     end
 
 end
+
+function addBox(ep::EzPnP, name::String, pose::PoseStamped, s::Tuple)
+    ep.scene_interface.add_box(name, pose, s)
+end
+
+function addMesh(ep::EzPnP, name::String, pose::PoseStamped, filename::String, s::Tuple)
+    ep.scene_interface.add_mesh(name, pose, filename, s)
+end
+
+function addPlane(ep::EzPnP, name::String, pose::PoseStamped, normal::Tuple, offset::Float64)
+    ep.scene_interface.add_plane(name, pose, normal, offset)
+end
+
+function addSphere(ep::EzPnP, name::String, pose::PoseStamped, radius::Float64)
+    ep.scene_interface.add_sphere(name, pose, radius)
+end
+
+function attachBox(ep::EzPnP, link::String, name::String, pose::PoseStamped, s::Tuple, touch_links::Array{String})
+    # TODO add a check for empty touch_links here, and force gripper links
+    ep.scene_interface.attach_box(link, name, pose, s, touch_links)
+end
+
+function attachMesh(ep::EzPnP, link::String, name::String, pose::PoseStamped, filename::String, s::Tuple, touch_links::Array{String})
+    # TODO add a check for empty touch_links here, and force gripper links
+    ep.scene_interface.attach_mesh(link, name, pose, filename, s, touch_links)
+end
+
 #end
