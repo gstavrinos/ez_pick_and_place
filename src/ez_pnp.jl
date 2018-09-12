@@ -15,21 +15,36 @@ using .geometry_msgs.msg
 using .schunk_pg70.srv
 
 abstract type EzMove end
+abstract type ObjectToAttach end
 
 struct ArmMove <: EzMove
     name::String
     pose::PoseStamped
-
-    function ArmMove(n, p)
-        return new(n, p)
-    end
 end
 
 struct GripperMove <: EzMove
+    grip::Bool
     name::String
     position::Float64
     velocity::Float64
     acceleration::Float64
+end
+
+struct BoxToAttach <: ObjectToAttach
+    link::String
+    name::String
+    pose::PoseStamped
+    sz::Tuple
+    touch_links::Array{String}
+end
+
+struct MeshToAttach <: ObjectToAttach
+    link::String
+    name::String
+    pose::PoseStamped
+    filename::String
+    sz::Tuple
+    touch_links::Array{String}
 end
 
 struct EzPnP
@@ -44,23 +59,27 @@ struct EzPnP
     reset_on_failure::Bool
     print_status::Bool
     node_name::String
-    # -----------------------------------------------------
+    # ----------------------------------------------------------
 
     # This var can be modified using the addMove func.
     moves::Array{EzMove}
-    # -----------------------------------------------------
+    # ----------------------------------------------------------
 
     # MoveIt-related vars. There is no need to be modified.
     robot_commander::PyObject
     scene_interface::PyObject
     arm_move_group::PyObject
-    # -----------------------------------------------------
+    # ----------------------------------------------------------
+
+    # This var can be modified using the addAttachedObject func.
+    ota::Array{ObjectToAttach}
+    # ----------------------------------------------------------
 
     function EzPnP(dpn, tbm, tbg, ggn, pa, pt, agn, rof, ps, nn)
         init_node(nn)
         moveit_commander.roscpp_initialize(ARGS)
 
-        return new(dpn, tbm, tbg, ggn, pa, pt, agn, rof, ps, nn, [], moveit_commander.RobotCommander(), moveit_commander.PlanningSceneInterface(), moveit_commander.MoveGroupCommander(agn))
+        return new(dpn, tbm, tbg, ggn, pa, pt, agn, rof, ps, nn, [], moveit_commander.RobotCommander(), moveit_commander.PlanningSceneInterface(), moveit_commander.MoveGroupCommander(agn), [])
     end
 
 end
@@ -89,11 +108,11 @@ function start(ep::EzPnP)
     # if you don't find anyh attached objects.
 
     move_index = 1
+    gripping = false # The gripper is currently free
 
     while !is_shutdown() && !isempty(ep.moves)
         try
             suc = false
-            # TODO implement move(ep::EzPnP, gm::GripperMove)
             if ep.print_status
                 println("Attempting...: "*ep.moves[move_index].name)
             end
@@ -103,6 +122,30 @@ function start(ep::EzPnP)
                     println("Success...: "*ep.moves[move_index].name)
                 end
                 if ep.moves[move_index] isa GripperMove || move_index == length(ep.moves)
+                    if ep.moves[move_index] isa GripperMove 
+                        if ep.moves[move_index].grip
+                            # attach first object here
+                            if length(ep.ota) > 0
+                                if ep.ota[1] isa BoxToAttach
+                                    if ep.print_status
+                                        println("Attaching object...: "*ep.ota[1].name)
+                                    end
+                                    ep.scene_interface[:attach_box](ep.ota[1].link, ep.ota[1].name, ep.ota[1].pose, ep.ota[1].sz, ep.ota[1].touch_links)
+                                    gripping = true
+                                elseif ep.ota[1] isa MeshToAttach
+                                    if ep.print_status
+                                        println("Attaching object...: "*ep.ota[1].name)
+                                    end
+                                    ep.scene_interface[:attach_mesh](ep.ota[1].link, ep.ota[1].name, ep.ota[1].pose, ep.ota[1].filename, ep.ota[1].sz, ep.ota[1].touch_links)
+                                    gripping = true
+                                end
+                            end
+                        elseif ep.moves[move_index].grip && gripping
+                            ep.scene_interface[:remove_attached_object](ep.ota[1].link, ep.ota[1].name)
+                            gripping = false
+                            popfirst!(ep.ota)
+                        end
+                    end
                     deleteat!(ep.moves, 1:move_index)
                     move_index = 1
                 else
@@ -127,29 +170,33 @@ function start(ep::EzPnP)
 end
 
 function addBox(ep::EzPnP, name::String, pose::PoseStamped, s::Tuple)
-    ep.scene_interface.add_box(name, pose, s)
+    ep.scene_interface[:add_box](name, pose, s)
 end
 
 function addMesh(ep::EzPnP, name::String, pose::PoseStamped, filename::String, s::Tuple)
-    ep.scene_interface.add_mesh(name, pose, filename, s)
+    ep.scene_interface[:add_mesh](name, pose, filename, s)
 end
 
 function addPlane(ep::EzPnP, name::String, pose::PoseStamped, normal::Tuple, offset::Float64)
-    ep.scene_interface.add_plane(name, pose, normal, offset)
+    ep.scene_interface[:add_plane](name, pose, normal, offset)
 end
 
 function addSphere(ep::EzPnP, name::String, pose::PoseStamped, radius::Float64)
-    ep.scene_interface.add_sphere(name, pose, radius)
+    ep.scene_interface[:add_sphere](name, pose, radius)
 end
 
 function attachBox(ep::EzPnP, link::String, name::String, pose::PoseStamped, s::Tuple, touch_links::Array{String})
+    bta = BoxToAttach(link, name, pose, s, touch_links)
+    push!(ep.ota, bta)
     # TODO add a check for empty touch_links here, and force gripper links
-    ep.scene_interface.attach_box(link, name, pose, s, touch_links)
+    #ep.scene_interface.attach_box(link, name, pose, s, touch_links)
 end
 
 function attachMesh(ep::EzPnP, link::String, name::String, pose::PoseStamped, filename::String, s::Tuple, touch_links::Array{String})
+    mta = MeshToAttach(link, name, pose, filename, s, touch_links)
+    push!(ep.ota, mta)
     # TODO add a check for empty touch_links here, and force gripper links
-    ep.scene_interface.attach_mesh(link, name, pose, filename, s, touch_links)
+    #ep.scene_interface.attach_mesh(link, name, pose, filename, s, touch_links)
 end
 
 #end
