@@ -21,7 +21,7 @@ p.pose.orientation.y = -0.017323
 p.pose.orientation.z = 0.0038264
 p.pose.orientation.w = 0.70225
 
-gm = GripperMove("Gripper: Open", 60.0, 80.0, 80.0)
+gm = GripperMove(false, "Gripper: Open", 60.0, 80.0, 80.0)
 addMove(e, gm)
 
 am = ArmMove("Pick: distant location", p)
@@ -43,7 +43,7 @@ p2.pose.orientation.w = 0.70225
 am = ArmMove("Pick: approach location", p2)
 addMove(e, am)
 
-gm = GripperMove("Gripper: Close", 20.0, 80.0, 80.0)
+gm = GripperMove(true, "Gripper: Close", 20.0, 80.0, 80.0)
 addMove(e, gm)
 
 am = ArmMove("Pick: retreat location", p)
@@ -54,5 +54,19 @@ function move(ep::EzPnP, gm::GripperMove)
     wait_for_service("schunk_pg70/set_position")
     return gripper_service(set_positionRequest(gm.position, gm.velocity, gm.acceleration)).goal_accepted
 end
+
+ball_pose = PoseStamped()
+p2.header.stamp = RobotOS.now()
+p2.header.frame_id = "base_link"
+p2.pose.position.x = pick_trans[1]
+p2.pose.position.y = pick_trans[2]
+p2.pose.position.z = pick_trans[3] + 1
+# Top-down orientation
+p2.pose.orientation.x = 0
+p2.pose.orientation.y = 0
+p2.pose.orientation.z = 0
+p2.pose.orientation.w = 1
+
+#addSphere(e, "Orange Ball", ball_pose, 0.06)
 
 start(e)
