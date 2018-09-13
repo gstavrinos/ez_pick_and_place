@@ -56,17 +56,34 @@ function move(ep::EzPnP, gm::GripperMove)
 end
 
 ball_pose = PoseStamped()
-p2.header.stamp = RobotOS.now()
-p2.header.frame_id = "base_link"
-p2.pose.position.x = pick_trans[1]
-p2.pose.position.y = pick_trans[2]
-p2.pose.position.z = pick_trans[3] + 1
+ball_pose.header.stamp = RobotOS.now()
+ball_pose.header.frame_id = "base_link"
+ball_pose.pose.position.x = pick_trans[1]
+ball_pose.pose.position.y = pick_trans[2]
+ball_pose.pose.position.z = pick_trans[3] + 1
 # Top-down orientation
-p2.pose.orientation.x = 0
-p2.pose.orientation.y = 0
-p2.pose.orientation.z = 0
-p2.pose.orientation.w = 1
+ball_pose.pose.orientation.x = 0
+ball_pose.pose.orientation.y = 0
+ball_pose.pose.orientation.z = 0
+ball_pose.pose.orientation.w = 1
 
-#addSphere(e, "Orange Ball", ball_pose, 0.06)
+addSphere(e, "Orange Ball", ball_pose, 0.06)
 
-start(e)
+
+box_pose = PoseStamped()
+box_pose.header.stamp = RobotOS.now()
+box_pose.header.frame_id = "base_link"
+box_pose.pose.position.x = 1
+box_pose.pose.position.y = 1
+box_pose.pose.position.z = 1
+# Top-down orientation
+box_pose.pose.orientation.x = 0
+box_pose.pose.orientation.y = 0
+box_pose.pose.orientation.z = 0
+box_pose.pose.orientation.w = 1
+
+addBox(e, "Testbox", box_pose, (0.05, 0.05, 0.05))
+
+println(e.scene_interface[:get_known_object_names]())
+
+#start(e)
