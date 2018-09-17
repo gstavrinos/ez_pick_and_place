@@ -246,17 +246,21 @@ function addSphere(ep::EzPnP, name::String, pose::PoseStamped, radius::Float64)
 end
 
 function attachBox(ep::EzPnP, link::String, name::String, pose::PoseStamped, s::Tuple, touch_links::Array{String})
+    # TODO isempty is not compatible with julia-0.6.4
+    if length(touch_links) == 0
+        touch_links = ep.robot_commander[:get_link_names](ep.gripper_group_name)
+    end
     bta = BoxToAttach(link, name, pose, s, touch_links)
     push!(ep.ota, bta)
-    # TODO add a check for empty touch_links here, and force gripper links
-    #ep.scene_interface.attach_box(link, name, pose, s, touch_links)
 end
 
 function attachMesh(ep::EzPnP, link::String, name::String, pose::PoseStamped, filename::String, s::Tuple, touch_links::Array{String})
+    # TODO isempty is not compatible with julia-0.6.4
+    if length(touch_links) == 0
+        touch_links = ep.robot_commander[:get_link_names](ep.gripper_group_name)
+    end
     mta = MeshToAttach(link, name, pose, filename, s, touch_links)
     push!(ep.ota, mta)
-    # TODO add a check for empty touch_links here, and force gripper links
-    #ep.scene_interface.attach_mesh(link, name, pose, filename, s, touch_links)
 end
 
 #end
