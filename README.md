@@ -108,6 +108,11 @@ Get the first move added by the addMove functions.
    If the move is unsuccessful and reset_on_failure == true
         Move the arm to the default position, based on default_position_name, and set the next move, back to the start of the queue.
 ```
+
+As a diagram, `start` looks like this:
+
+<img src="https://raw.githubusercontent.com/gstavrinos/ez_pick_and_place/master/doc/algo.png">
+
 ###### Note1: Using the `attachBox`/`attachMesh` functions you ONLY inform the routine that you need the object(s) to be attached. You don't immediately attach them, since ez_pnp takes full control of the process after you call `start`. The objects to be attached are added in a `queue` and will automatically be attached one by one after successive "pick" (`grip` == `true`) and "place" (`grip` == `false`) moves. (When `grip` == `true` the first object on the objects to be attached `queue` is attached and when `grip` == `false`, the first object on the objects to be attached `queue` is detached and removed from the `queue`.
 
 
