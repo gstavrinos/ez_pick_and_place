@@ -7,7 +7,7 @@ In the example folder you can find a working illustration of the package (using 
 
 1. Initialize an EzPnP object.
 2. Initialize GripperMove and ArmMove objects. 
-3. Use the addMove function to add GripperMove and ArmMove objects to the EZPnP routine. WARNING: Order matters.
+3. Use the addMove function to add GripperMove and ArmMove objects to the EzPnP routine. WARNING: Order matters.
 4. Implement a move function that will move your gripper based on a GripperMove.
 5. Optionally use the addSphere/addBox/addMesh/AddPlance functions to add objects to your planning scene.
 6. Optionally use the attachBox/attachMesh functions to attach objects to your robot.
@@ -16,8 +16,8 @@ In the example folder you can find a working illustration of the package (using 
 ##
 
 ## In detail...
-### EZPnP
-The `EZPnP` constructor takes the following arguments:
+### EzPnP
+The `EzPnP` constructor takes the following arguments:
 
 1. The name of the node that will handle the MoveIt! calls. [::String]
 2. The maximum planning time of the MoveIt! planners. [::Float64]
@@ -30,7 +30,7 @@ The `EZPnP` constructor takes the following arguments:
 9. Whether the robot should reset to its default pose if a failure occurs. [::Bool]
 10. Whether status messages should be printed [::Bool]
 
-`EZPnP` fields:
+`EzPnP` fields:
 
 1. `node_name`::String (initialized by the user using the constructor)
 2. `planning_time`::Float64 (initialized by the user using the constructor)
@@ -79,10 +79,10 @@ The `GripperMove` constructor takes the following arguments:
 ##
 # Functions you are expected to use (and how to do so effectively)
 
-##### `addMove`(ep::EZPnp, gm::GripperMove) and `addMove`(ep::EZPnp, am::ArmMove)
+##### `addMove`(ep::EzPnP, gm::GripperMove) and `addMove`(ep::EzPnP, am::ArmMove)
 The `addMove` functions push a `GripperMove` or `ArmMove` to the `queue` of moves that the robot's arm has to perform.
 
-##### `addSphere`(ep::EZPnP, name::String, pose::PoseStamped, radius::Float64), `addBox`(ep::EzPnP, name::String, pose::PoseStamped, s::Tuple), `addMesh`(ep::EzPnP, name::String, pose::PoseStamped, filename::String, s::Tuple), `addPlane`(ep::EzPnP, name::String, pose::PoseStamped, normal::Tuple, offset::Float64)
+##### `addSphere`(ep::EzPnP, name::String, pose::PoseStamped, radius::Float64), `addBox`(ep::EzPnP, name::String, pose::PoseStamped, s::Tuple), `addMesh`(ep::EzPnP, name::String, pose::PoseStamped, filename::String, s::Tuple), `addPlane`(ep::EzPnP, name::String, pose::PoseStamped, normal::Tuple, offset::Float64)
 
 The `addSphere`, `addBox`, `addMesh` and `addPlane` functions add objects on the planning scene, just like their Python equivalents. For more info on these functions, consult the MoveIt! API for Python.
 
