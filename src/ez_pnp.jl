@@ -95,11 +95,56 @@ function addMove(ep::EzPnP, move::EzMove)
     push!(ep.moves, move)
 end
 
+function validMoves(ep::EzPnP)
+    found_grip = false
+    found_arm_moves = false
+    found_ungrip_after_grip = false
+
+    last_grip_encountered = false
+    if length(ep.moves) == 0
+        println("[ERROR]: No arm or gripper moves found...")
+        return false
+    end
+    for move in ep.moves
+        if move isa GripperMove
+            if move.grip
+                if last_grip_encountered
+                    println("[ERROR]: Found two consequtive grip moves (grip == true)")
+                    return false
+                end
+                found_grip = true
+            elseif found_grip
+                found_ungrip_after_grip = true
+            end
+            last_grip_encountered = move.grip
+        elseif move isa ArmMove
+            found_arm_moves = true
+        end
+    end
+    found_warn = false
+    if !found_grip
+        found_warn = true
+        println("[WARNING]: No grip moves found (grip == true).")
+    end
+    if !found_ungrip_after_grip
+        found_warn = true
+        println("[WARNING]: No ungrip moves found (grip == false) after gripping.")
+    end
+    if !found_arm_moves
+        found_warn = true
+        println("[WARNING]: No arm moves found.")
+    end
+    if found_warn
+        println("[INFO]: Starting execution of the routine, despite the warnings...")
+    end
+    return true
+end
+
 function start(ep::EzPnP)
-
-    # TODO
-    # validate the moves array. (Just check for two consequtive GripperMoves on which grip==true)
-
+    if !validMoves(ep)
+        println("[INFO]: Exiting...")
+        exit()
+    end
     ep.arm_move_group[:set_planning_time](ep.planning_time)
     ep.arm_move_group[:set_num_planning_attempts](ep.planning_attempts)
 
@@ -107,8 +152,10 @@ function start(ep::EzPnP)
 
     planning_frame = ep.robot_commander[:get_planning_frame]()
 
-    # TODO get attached objects and known objects and print a warning
-    # if you don't find any attached objects.
+    # TODO isempty is not compatible with julia-0.6.4
+    if length(ep.scene_interface[:get_known_object_names]()) > 0 && length(ep.ota) == 0
+        println("[INFO]: Found planning scene objects but none to attach!")
+    end
 
     move_index = 1
     gripping = false # The gripper is currently free
@@ -117,7 +164,7 @@ function start(ep::EzPnP)
         try
             suc = false
             if ep.print_status
-                println("Attempting...: "*ep.moves[move_index].name)
+                println("[STATUS]: Attempting...: "*ep.moves[move_index].name)
             end
             suc = move(ep, ep.moves[move_index])
             if ep.moves[move_index] isa GripperMove
@@ -127,7 +174,7 @@ function start(ep::EzPnP)
             end
             if suc
                 if ep.print_status
-                    println("Success...: "*ep.moves[move_index].name)
+                    println("[STATUS]: Success...: "*ep.moves[move_index].name)
                 end
                 if ep.moves[move_index] isa GripperMove || move_index == length(ep.moves)
                     if ep.moves[move_index] isa GripperMove 
@@ -136,13 +183,13 @@ function start(ep::EzPnP)
                             if length(ep.ota) > 0
                                 if ep.ota[1] isa BoxToAttach
                                     if ep.print_status
-                                        println("Attaching object...: "*ep.ota[1].name)
+                                        println("[STATUS]: Attaching object...: "*ep.ota[1].name)
                                     end
                                     ep.scene_interface[:attach_box](ep.ota[1].link, ep.ota[1].name, ep.ota[1].pose, ep.ota[1].sz, ep.ota[1].touch_links)
                                     gripping = true
                                 elseif ep.ota[1] isa MeshToAttach
                                     if ep.print_status
-                                        println("Attaching object...: "*ep.ota[1].name)
+                                        println("[STATUS]: Attaching object...: "*ep.ota[1].name)
                                     end
                                     ep.scene_interface[:attach_mesh](ep.ota[1].link, ep.ota[1].name, ep.ota[1].pose, ep.ota[1].filename, ep.ota[1].sz, ep.ota[1].touch_links)
                                     gripping = true
@@ -150,7 +197,7 @@ function start(ep::EzPnP)
                             end
                         elseif !ep.moves[move_index].grip && gripping
                             if ep.print_status
-                                println("Detaching object...: "*ep.ota[1].name)
+                                println("[STATUS]: Detaching object...: "*ep.ota[1].name)
                             end
                             ep.scene_interface[:remove_attached_object](ep.ota[1].link, ep.ota[1].name)
                             gripping = false
@@ -168,7 +215,7 @@ function start(ep::EzPnP)
             end
             if !suc && ep.reset_on_failure
                 move_index = 1
-                println("Resetting position due to failure")
+                println("[INFO]: Resetting position due to failure")
                 ep.arm_move_group[:set_named_target](ep.default_position_name)
                 ep.arm_move_group[:go]()
             end
@@ -177,7 +224,7 @@ function start(ep::EzPnP)
         end
     end
     if ep.print_status
-        println("Done! :)")
+        println("[STATUS]: Done! :)")
     end
 
 end
