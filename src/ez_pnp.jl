@@ -23,11 +23,11 @@ struct ArmMove <: EzMove
 end
 
 struct GripperMove <: EzMove
-    grip::Bool
     name::String
     position::Float64
     velocity::Float64
     acceleration::Float64
+    grip::Bool
 end
 
 struct BoxToAttach <: ObjectToAttach
@@ -49,16 +49,16 @@ end
 
 struct EzPnP
     # Vars in the struct you can configure.
-    default_position_name::String
-    time_between_moves::Float64
-    time_between_grips::Float64
-    gripper_group_name::String
-    planning_attempts::Int32
+    node_name::String
     planning_time::Float64
+    planning_attempts::Int32
+    time_between_arm_moves::Float64
+    time_between_grips::Float64
     arm_group_name::String
+    gripper_group_name::String
+    default_position_name::String
     reset_on_failure::Bool
     print_status::Bool
-    node_name::String
     # ----------------------------------------------------------
 
     # This var can be modified using the addMove func.
@@ -75,11 +75,13 @@ struct EzPnP
     ota::Array{ObjectToAttach}
     # ----------------------------------------------------------
 
-    function EzPnP(dpn, tbm, tbg, ggn, pa, pt, agn, rof, ps, nn)
-        init_node(nn)
+    function EzPnP(nn, pt, pa, tbm, tbg, agn, ggn, dpn, rof, ps)
         moveit_commander.roscpp_initialize(ARGS)
+        init_node(nn)
 
-        return new(dpn, tbm, tbg, ggn, pa, pt, agn, rof, ps, nn, [], moveit_commander.RobotCommander(), moveit_commander.PlanningSceneInterface(), moveit_commander.MoveGroupCommander(agn), [])
+        return new(nn, pt, pa, tbm, tbg, agn, ggn, dpn, rof, ps, [], 
+            moveit_commander.RobotCommander(),  moveit_commander.PlanningSceneInterface(), 
+            moveit_commander.MoveGroupCommander(agn), [])
     end
 
 end
@@ -95,17 +97,18 @@ end
 
 function start(ep::EzPnP)
 
+    # TODO
+    # validate the moves array. (Just check for two consequtive GripperMoves on which grip==true)
+
     ep.arm_move_group[:set_planning_time](ep.planning_time)
     ep.arm_move_group[:set_num_planning_attempts](ep.planning_attempts)
 
     eef_link = ep.arm_move_group[:get_end_effector_link]()
-    println(eef_link)
 
     planning_frame = ep.robot_commander[:get_planning_frame]()
-    println(planning_frame)
 
     # TODO get attached objects and known objects and print a warning
-    # if you don't find anyh attached objects.
+    # if you don't find any attached objects.
 
     move_index = 1
     gripping = false # The gripper is currently free
@@ -117,6 +120,11 @@ function start(ep::EzPnP)
                 println("Attempting...: "*ep.moves[move_index].name)
             end
             suc = move(ep, ep.moves[move_index])
+            if ep.moves[move_index] isa GripperMove
+                sleep(ep.time_between_grips)
+            elseif ep.moves[move_index] isa ArmMove
+                sleep(ep.time_between_arm_moves)
+            end
             if suc
                 if ep.print_status
                     println("Success...: "*ep.moves[move_index].name)
@@ -140,10 +148,15 @@ function start(ep::EzPnP)
                                     gripping = true
                                 end
                             end
-                        elseif ep.moves[move_index].grip && gripping
+                        elseif !ep.moves[move_index].grip && gripping
+                            if ep.print_status
+                                println("Detaching object...: "*ep.ota[1].name)
+                            end
                             ep.scene_interface[:remove_attached_object](ep.ota[1].link, ep.ota[1].name)
                             gripping = false
-                            popfirst!(ep.ota)
+                            # TODO popfirst! is not available in julia-0.6.4
+                            #popfirst!(ep.ota)
+                            deleteat!(ep.ota, 1)
                         end
                     end
                     deleteat!(ep.moves, 1:move_index)
