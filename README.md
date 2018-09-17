@@ -99,11 +99,10 @@ Get the first move added by the addMove functions.
     If the move is successful:
         If the successful move is a GripperMove:
             If it is a GripperMove and grip == true:
-                Attach the first object added by the attachBox/AttachMesh functions.
+                Attach the first object added by the attachBox/attachMesh functions.
             Elseif it is a GripperMove and grip == false and had already gripping an object:
-                Detach the first object added by the attachBox/AttachMesh functions, and remove it from the queue.
-            Else:
-                Remove all moves from the move queue that lead to the last gripping move.
+                Detach the first object added by the attachBox/attachMesh functions, and remove it from the queue.
+            Remove all moves from the move queue that lead to the last gripping move.
         If the successful move is an ArmMove:
             Move on to the next move in the queue.
    If the move is unsuccessful and reset_on_failure == true
