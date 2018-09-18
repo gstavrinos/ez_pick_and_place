@@ -7,12 +7,10 @@ using PyCall
 @pyimport rospy
 
 @rosimport geometry_msgs.msg: PoseStamped
-@rosimport schunk_pg70.srv: set_position
 
 rostypegen()
 
 using .geometry_msgs.msg
-using .schunk_pg70.srv
 
 abstract type EzMove end
 abstract type ObjectToAttach end
