@@ -1,9 +1,15 @@
 #!/usr/bin/env julia
-#push!(LOAD_PATH, "/home/gstavrinos/jultemp")
-#push!(LOAD_PATH, "/home/gstavrinos/manos_catkin_ws/src/ez_pick_and_place/src/")
 using RobotOS
-#using ez_pnp
-include("../src/ez_pnp.jl")
+using PyCall
+
+@pyimport rospkg
+@rosimport schunk_pg70.srv: set_position
+rostypegen()
+using .schunk_pg70.srv
+
+rospack = rospkg.RosPack()
+ez_pnp_path = rospack[:get_path]("ez_pick_and_place") * "/src/ez_pnp.jl"
+include(ez_pnp_path)
 
 # Implement move function for gripper (ez_pnp knows how to handle this) [thanks multiple dispatch!]
 function move(ep::EzPnP, gm::GripperMove)
@@ -126,9 +132,14 @@ box_pose.pose.orientation.y = 0
 box_pose.pose.orientation.z = 0
 box_pose.pose.orientation.w = 1
 
+attached_pose = PoseStamped()
+attached_pose.header.stamp = RobotOS.now()
+attached_pose.header.frame_id = "ee_link"
+attached_pose.pose.position.x = 0.15
+
 addSphere(e, "Orange Ball", ball_pose, 0.06)
 addBox(e, "Testbox", box_pose, (0.05, 0.05, 0.05))
-attachBox(e, "ee_link", "Testbox", box_pose, (0.05, 0.05, 0.05), String[])
+attachBox(e, "gripper_link", "Testbox", attached_pose, (0.05, 0.05, 0.05), String[])
 
 # ------------------- Let's do it ------------------- 
 start(e)
