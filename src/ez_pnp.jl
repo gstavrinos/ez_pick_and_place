@@ -166,9 +166,9 @@ function start(ep::EzPnP)
             end
             suc = move(ep, ep.moves[move_index])
             if ep.moves[move_index] isa GripperMove
-                sleep(ep.time_between_grips)
+                rossleep(ep.time_between_grips)
             elseif ep.moves[move_index] isa ArmMove
-                sleep(ep.time_between_arm_moves)
+                rossleep(ep.time_between_arm_moves)
             end
             if suc
                 if ep.print_status
@@ -209,7 +209,6 @@ function start(ep::EzPnP)
                 else
                     move_index += 1
                 end
-                sleep(1)
             end
             if !suc && ep.reset_on_failure
                 move_index = 1
