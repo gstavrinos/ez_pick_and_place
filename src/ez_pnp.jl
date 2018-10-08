@@ -150,8 +150,7 @@ function start(ep::EzPnP)
 
     planning_frame = ep.robot_commander[:get_planning_frame]()
 
-    # TODO isempty is not compatible with julia-0.6.4
-    if length(ep.scene_interface[:get_known_object_names]()) > 0 && length(ep.ota) == 0
+    if !isempty(ep.scene_interface[:get_known_object_names]()) && isempty(ep.ota)
         println("[INFO]: Found planning scene objects but none to attach!")
     end
 
@@ -199,9 +198,7 @@ function start(ep::EzPnP)
                             end
                             ep.scene_interface[:remove_attached_object](ep.ota[1].link, ep.ota[1].name)
                             gripping = false
-                            # TODO popfirst! is not available in julia-0.6.4
-                            #popfirst!(ep.ota)
-                            deleteat!(ep.ota, 1)
+                            popfirst!(ep.ota)
                         end
                     end
                     deleteat!(ep.moves, 1:move_index)
@@ -243,8 +240,7 @@ function addSphere(ep::EzPnP, name::String, pose::PoseStamped, radius::Float64)
 end
 
 function attachBox(ep::EzPnP, link::String, name::String, pose::PoseStamped, s::Tuple, touch_links::Array{String})
-    # TODO isempty is not compatible with julia-0.6.4
-    if length(touch_links) == 0
+    if isempty(touch_links)
         touch_links = ep.robot_commander[:get_link_names](ep.gripper_group_name)
     end
     bta = BoxToAttach(link, name, pose, s, touch_links)
@@ -252,8 +248,7 @@ function attachBox(ep::EzPnP, link::String, name::String, pose::PoseStamped, s::
 end
 
 function attachMesh(ep::EzPnP, link::String, name::String, pose::PoseStamped, filename::String, s::Tuple, touch_links::Array{String})
-    # TODO isempty is not compatible with julia-0.6.4
-    if length(touch_links) == 0
+    if isempty(touch_links)
         touch_links = ep.robot_commander[:get_link_names](ep.gripper_group_name)
     end
     mta = MeshToAttach(link, name, pose, filename, s, touch_links)
