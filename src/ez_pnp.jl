@@ -124,7 +124,7 @@ function validMoves(ep::EzPnP)
         found_warn = true
         println("[WARNING]: No grip moves found (grip == true).")
     end
-    if !found_ungrip_after_grip
+    if !found_ungrip_after_grip && found_grip
         found_warn = true
         println("[WARNING]: No ungrip moves found (grip == false) after gripping.")
     end
