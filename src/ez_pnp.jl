@@ -57,6 +57,8 @@ struct EzPnP
     default_position_name::String
     reset_on_failure::Bool
     print_status::Bool
+    max_velocity_scaling_factor::Float64
+    max_acceleration_scaling_factor::Float64
     # ----------------------------------------------------------
 
     # This var can be modified using the addMove func.
@@ -73,11 +75,11 @@ struct EzPnP
     ota::Array{ObjectToAttach}
     # ----------------------------------------------------------
 
-    function EzPnP(nn, pt, pa, tbm, tbg, agn, ggn, dpn, rof, ps)
+    function EzPnP(nn, pt, pa, tbm, tbg, agn, ggn, dpn, rof, ps, mvsf, masf)
         moveit_commander.roscpp_initialize(ARGS)
         init_node(nn)
 
-        return new(nn, pt, pa, tbm, tbg, agn, ggn, dpn, rof, ps, [], 
+        return new(nn, pt, pa, tbm, tbg, agn, ggn, dpn, rof, ps, mvsf, masf, [], 
             moveit_commander.RobotCommander(),  moveit_commander.PlanningSceneInterface(), 
             moveit_commander.MoveGroupCommander(agn), [])
     end
@@ -145,6 +147,8 @@ function start(ep::EzPnP)
     end
     ep.arm_move_group[:set_planning_time](ep.planning_time)
     ep.arm_move_group[:set_num_planning_attempts](ep.planning_attempts)
+    ep.arm_move_group[:set_max_velocity_scaling_factor](ep.max_velocity_scaling_factor)
+    ep.arm_move_group[:set_max_acceleration_scaling_factor](ep.max_acceleration_scaling_factor)
 
     eef_link = ep.arm_move_group[:get_end_effector_link]()
 

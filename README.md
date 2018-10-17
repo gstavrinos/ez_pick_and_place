@@ -29,6 +29,8 @@ The `EzPnP` constructor takes the following arguments:
 8. The name of a default position (used to reset in case of a planner failure). [::String]
 9. Whether the robot should reset to its default pose if a failure occurs. [::Bool]
 10. Whether status messages should be printed [::Bool]
+11. The maximum velocity scaling factor of the MoveIt! planners. [::Float64]
+12. The maximum acceleration scaling factor of the MoveIt! planners. [::Float64]
 
 `EzPnP` fields:
 
@@ -42,11 +44,13 @@ The `EzPnP` constructor takes the following arguments:
 8. `default_position_name`::String (initialized by the user using the constructor)
 9. `reset_on_failure`::Bool (initialized by the user using the constructor)
 10. `print_status`::Bool (initialized by the user using the constructor)
-11. `moves`::Array{EzMove} (empty on initialization, the user defined moves are stored here, using the addMove function)
-12. `robot_commander`::PyObject (the MoveIt! RobotCommander Python object. Generally the user should not use this.)
-13. `scene_interface`::PyObject (the MoveIt! PlanningSceneInterface Python object. Generally the user should not use this.)
-14. `arm_move_group`::PyObject (the MoveIt! MoveGroupCommander Python object. Generally the user should not use this.)
-15. `ota`::Array{ObjectToAttach} (empty on initialization, the user defined objects to be attached are stored here, using the attachBox/attachMesh functions)
+11. `max_velocity_scaling_factor`::Float64 (initialized by the user using the constructor)
+12. `max_acceleration_scaling_factor`::Float64 (initialized by the user using the constructor)
+13. `moves`::Array{EzMove} (empty on initialization, the user defined moves are stored here, using the addMove function)
+14. `robot_commander`::PyObject (the MoveIt! RobotCommander Python object. Generally the user should not use this.)
+15. `scene_interface`::PyObject (the MoveIt! PlanningSceneInterface Python object. Generally the user should not use this.)
+16. `arm_move_group`::PyObject (the MoveIt! MoveGroupCommander Python object. Generally the user should not use this.)
+17. `ota`::Array{ObjectToAttach} (empty on initialization, the user defined objects to be attached are stored here, using the attachBox/attachMesh functions)
 ##
 ### ArmMove
 The `ArmMove` constructor takes the following arguments:
