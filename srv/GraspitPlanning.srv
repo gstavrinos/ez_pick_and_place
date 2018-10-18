@@ -1,0 +1,11 @@
+int32 objectID
+string gripper_frame
+string object_frame
+int32 confidence
+string object_name
+string gripper_name
+string detector_name
+string transform_to_frame_id
+string reference_frame_id # 0/1, 1 to use the object's pose
+---
+geometry_msgs/PoseStamped[] candidate_poses

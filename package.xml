@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>ez_pick_and_place</name>
-  <version>0.0.1</version>
+  <version>0.0.2</version>
   <description>The ez_pick_and_place package</description>
 
   <maintainer email="stavrinosgeo@gmail.com">George Stavrinos</maintainer>
@@ -9,7 +9,13 @@
   <license>TODO</license>
 
   <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>message_runtime</depend>
+  <depend>manipulation_msgs</depend>
+  <depend>message_generation</depend>
+  <depend>household_objects_database_msgs</depend>
 
   <export>
   </export>

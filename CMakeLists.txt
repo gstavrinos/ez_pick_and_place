@@ -4,9 +4,25 @@ project(ez_pick_and_place)
 add_compile_options(-std=c++11)
 
 find_package(catkin REQUIRED COMPONENTS
-    geometry_msgs
+  std_msgs
+  geometry_msgs
+  manipulation_msgs
+  message_generation
+  household_objects_database_msgs
 )
 
-catkin_package()
+add_service_files(
+   FILES
+   GraspitPlanning.srv
+)
 
-include_directories()
+generate_messages(
+   DEPENDENCIES
+   std_msgs
+   geometry_msgs
+)
+
+catkin_package(
+  CATKIN_DEPENDS std_msgs geometry_msgs message_generation
+)
+
