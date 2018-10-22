@@ -20,6 +20,9 @@ struct ArmMove <: EzMove
     pose::PoseStamped
 end
 
+struct DummyMove <: EzMove
+end
+
 struct GripperMove <: EzMove
     name::String
     position::Float64
@@ -45,7 +48,7 @@ struct MeshToAttach <: ObjectToAttach
     touch_links::Array{String}
 end
 
-struct EzPnP
+mutable struct EzPnP
     # Vars in the struct you can configure.
     node_name::String
     planning_time::Float64
@@ -75,13 +78,22 @@ struct EzPnP
     ota::Array{ObjectToAttach}
     # ----------------------------------------------------------
 
+    # This var can be modified using the addGraspPoses func.
+    grasp_poses::Array{ArmMove}
+    # ----------------------------------------------------------
+
+    # This var should be modified manually. It is used to
+    # keep track of already attempted grasp poses.
+    next_grasp_index::UInt32
+    # ----------------------------------------------------------
+
     function EzPnP(nn, pt, pa, tbm, tbg, agn, ggn, dpn, rof, ps, mvsf, masf)
         moveit_commander.roscpp_initialize(ARGS)
         init_node(nn)
 
         return new(nn, pt, pa, tbm, tbg, agn, ggn, dpn, rof, ps, mvsf, masf, [], 
             moveit_commander.RobotCommander(),  moveit_commander.PlanningSceneInterface(), 
-            moveit_commander.MoveGroupCommander(agn), [])
+            moveit_commander.MoveGroupCommander(agn), [], [], 0)
     end
 
 end
@@ -91,8 +103,24 @@ function move(ep::EzPnP, am::ArmMove)
     return ep.arm_move_group[:go]()
 end
 
+function move(ep::EzPnP, dm::DummyMove)
+    ep.next_grasp_index += 1
+    if size(ep.grasp_poses) < ep.next_grasp_index
+        ep.next_grasp_index = 1
+    end
+    #return move(ep, ep.grasp_poses[ep.next_grasp_index])
+    return move(ep, ep.grasp_poses[1])
+end
+
 function addMove(ep::EzPnP, move::EzMove)
     push!(ep.moves, move)
+end
+
+function addGraspPoses(ep::EzPnP, grasp_poses::Array{ArmMove})
+    for gp in grasp_poses
+        push!(ep.grasp_poses, gp)
+    end
+    push!(ep.moves, DummyMove())
 end
 
 function validMoves(ep::EzPnP)
@@ -109,7 +137,7 @@ function validMoves(ep::EzPnP)
         if move isa GripperMove
             if move.grip
                 if last_grip_encountered
-                    println("[ERROR]: Found two consequtive grip moves (grip == true)")
+                    println("[ERROR]: Found two consecutive grip moves (grip == true)")
                     return false
                 end
                 found_grip = true
@@ -118,6 +146,8 @@ function validMoves(ep::EzPnP)
             end
             last_grip_encountered = move.grip
         elseif move isa ArmMove
+            found_arm_moves = true
+        elseif move isa DummyMove && !isempty(ep.grasp_poses)
             found_arm_moves = true
         end
     end
@@ -165,7 +195,11 @@ function start(ep::EzPnP)
         try
             suc = false
             if ep.print_status
-                println("[STATUS]: Attempting...: "*ep.moves[move_index].name)
+                if ep.moves[move_index] isa DummyMove
+                    println("[STATUS]: Attempting...: "*ep.grasp_poses[ep.next_grasp_index+1].name)
+                else
+                    println("[STATUS]: Attempting...: "*ep.moves[move_index].name)
+                end
             end
             suc = move(ep, ep.moves[move_index])
             if ep.moves[move_index] isa GripperMove
@@ -175,7 +209,11 @@ function start(ep::EzPnP)
             end
             if suc
                 if ep.print_status
-                    println("[STATUS]: Success...: "*ep.moves[move_index].name)
+                    if ep.moves[move_index] isa DummyMove
+                        println("[STATUS]: Success...: "*ep.grasp_poses[ep.next_grasp_index+1].name)
+                    else
+                        println("[STATUS]: Success...: "*ep.moves[move_index].name)
+                    end
                 end
                 if ep.moves[move_index] isa GripperMove || move_index == length(ep.moves)
                     if ep.moves[move_index] isa GripperMove 
