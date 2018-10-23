@@ -27,10 +27,9 @@ def planIt(req):
     response = original_planning_srv(arm_name = req.gripper_name, target = target)
     cg = response.grasps
     cp = []
-    if len(req.transform_to_frame_id) > 0:
-        for i in range(len(cg)):
-            try:
-
+    for i in range(len(cg)):
+        try:
+            if len(req.transform_to_frame_id) > 0:
                 transform = TransformStamped()
                 transform.header.stamp = rospy.Time.now()
                 transform.header.frame_id = req.object_frame
@@ -43,9 +42,6 @@ def planIt(req):
                 transform.transform.rotation.z = cg[i].grasp_pose.pose.orientation.z
                 transform.transform.rotation.w = cg[i].grasp_pose.pose.orientation.w
                 tf_listener.setTransform(transform, "ez_helper")
-
-                print i
-                print transform
 
                 graspit_moveit_transform = TransformStamped()
                 graspit_moveit_transform.header.stamp = rospy.Time.now()
@@ -72,10 +68,7 @@ def planIt(req):
                 transform.transform.rotation.w = transform_frame_gripper_rot[3]
                 tf_listener.setTransform(transform, "ez_helper")
 
-                print tf_listener.getFrameStrings()
-
                 target_trans, target_rot = tf_listener.lookupTransform("world", "ez_helper_target_graspit_pose", rospy.Time(0))
-
 
                 cg[i].grasp_pose.header.frame_id = "world"
                 cg[i].grasp_pose.pose.position.x = target_trans[0]
@@ -86,8 +79,8 @@ def planIt(req):
                 cg[i].grasp_pose.pose.orientation.z = target_rot[2]
                 cg[i].grasp_pose.pose.orientation.w = target_rot[3]
                 cp.append(cg[i].grasp_pose)
-            except Exception as e:
-                print e
+        except Exception as e:
+            print e
     return GraspitPlanningResponse(cp)
 
 def main():
