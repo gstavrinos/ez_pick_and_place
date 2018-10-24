@@ -104,12 +104,34 @@ function move(ep::EzPnP, am::ArmMove)
 end
 
 function move(ep::EzPnP, dm::DummyMove)
-    ep.next_grasp_index += 1
-    if size(ep.grasp_poses) < ep.next_grasp_index
-        ep.next_grasp_index = 1
+    ep.next_grasp_index = nextGraspIndex(ep)
+    pre = ArmMove("asdasd", PoseStamped()) #ep.grasp_poses[ep.next_grasp_index]
+    pre.pose.header = ep.grasp_poses[ep.next_grasp_index].pose.header
+    pre.pose.pose.position.x = ep.grasp_poses[ep.next_grasp_index].pose.pose.position.x
+    pre.pose.pose.position.y = ep.grasp_poses[ep.next_grasp_index].pose.pose.position.y
+    pre.pose.pose.position.z = ep.grasp_poses[ep.next_grasp_index].pose.pose.position.z + 0.1
+    pre.pose.pose.orientation.x = ep.grasp_poses[ep.next_grasp_index].pose.pose.orientation.x
+    pre.pose.pose.orientation.y = ep.grasp_poses[ep.next_grasp_index].pose.pose.orientation.y
+    pre.pose.pose.orientation.z = ep.grasp_poses[ep.next_grasp_index].pose.pose.orientation.z
+    pre.pose.pose.orientation.w = ep.grasp_poses[ep.next_grasp_index].pose.pose.orientation.w
+    println("PRE1")
+    if move(ep, pre)
+        rossleep(ep.time_between_arm_moves)
+        println("GRASP")
+        if move(ep, ep.grasp_poses[ep.next_grasp_index])
+            rossleep(ep.time_between_arm_moves)
+            println("PRE2")
+            if move(ep, pre)
+                return true
+            else
+                return false
+            end
+        else
+            return false
+        end
+    else
+        return false
     end
-    #return move(ep, ep.grasp_poses[ep.next_grasp_index])
-    return move(ep, ep.grasp_poses[1])
 end
 
 function addMove(ep::EzPnP, move::EzMove)
@@ -149,6 +171,9 @@ function validMoves(ep::EzPnP)
             found_arm_moves = true
         elseif move isa DummyMove && !isempty(ep.grasp_poses)
             found_arm_moves = true
+        elseif move isa DummyMove && isempty(ep.grasp_poses)
+            println("[ERROR]: Grasp Poses array is empty.")
+            return false
         end
     end
     found_warn = false
@@ -168,6 +193,14 @@ function validMoves(ep::EzPnP)
         println("[INFO]: Starting execution of the routine, despite the warnings...")
     end
     return true
+end
+
+function nextGraspIndex(ep::EzPnP)
+    if length(ep.grasp_poses) < ep.next_grasp_index + 1
+        return 1
+    else
+        return ep.next_grasp_index + 1
+    end
 end
 
 function start(ep::EzPnP)
@@ -191,12 +224,14 @@ function start(ep::EzPnP)
     move_index = 1
     gripping = false # The gripper is currently free
 
+    def_pos = false
+
     while !is_shutdown() && !isempty(ep.moves)
         try
             suc = false
             if ep.print_status
                 if ep.moves[move_index] isa DummyMove
-                    println("[STATUS]: Attempting...: "*ep.grasp_poses[ep.next_grasp_index+1].name)
+                    println("[STATUS]: Attempting...: "*ep.grasp_poses[nextGraspIndex(ep)].name)
                 else
                     println("[STATUS]: Attempting...: "*ep.moves[move_index].name)
                 end
@@ -208,9 +243,10 @@ function start(ep::EzPnP)
                 rossleep(ep.time_between_arm_moves)
             end
             if suc
+                def_pos = false
                 if ep.print_status
                     if ep.moves[move_index] isa DummyMove
-                        println("[STATUS]: Success...: "*ep.grasp_poses[ep.next_grasp_index+1].name)
+                        println("[STATUS]: Success...: "*ep.grasp_poses[nextGraspIndex(ep)].name)
                     else
                         println("[STATUS]: Success...: "*ep.moves[move_index].name)
                     end
@@ -251,9 +287,13 @@ function start(ep::EzPnP)
             end
             if !suc && ep.reset_on_failure
                 move_index = 1
-                println("[INFO]: Resetting position due to failure")
-                ep.arm_move_group[:set_named_target](ep.default_position_name)
-                ep.arm_move_group[:go]()
+                if !def_pos
+                    println("[INFO]: Resetting position due to failure")
+                    ep.arm_move_group[:set_named_target](ep.default_position_name)
+                    if ep.arm_move_group[:go]()
+                        def_pos = true
+                    end
+                end
             end
         catch e
             println(e)
