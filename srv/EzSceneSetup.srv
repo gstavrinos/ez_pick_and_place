@@ -1,0 +1,6 @@
+EzModel[] objects
+EzModel[] obstacles
+EzModel gripper
+---
+bool success
+string info

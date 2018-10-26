@@ -14,6 +14,12 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
    FILES
    GraspitPlanning.srv
+   EzSceneSetup.srv
+)
+
+add_message_files(
+  FILES
+   EzModel.msg
 )
 
 generate_messages(
