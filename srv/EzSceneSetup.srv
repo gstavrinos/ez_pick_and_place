@@ -1,6 +1,8 @@
 EzModel[] objects
 EzModel[] obstacles
 EzModel gripper
+string[] finger_joint_names
+float64 pose_factor
 ---
 bool success
 string info
