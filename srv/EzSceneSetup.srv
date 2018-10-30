@@ -6,3 +6,11 @@ float64 pose_factor
 ---
 bool success
 string info
+string error_codes
+
+# 0 = Success
+# 1 = Invalid service input: No finger_joint_names provided
+# 2 = Invalid service input: pose_factor is negative or zero
+# 3 = Invalid service input: No frame_id in PoseStamped message
+# 4 = Error while adding a model in the graspit database
+# 5 = Error while loading a model from the graspit database
