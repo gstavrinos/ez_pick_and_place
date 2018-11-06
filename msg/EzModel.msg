@@ -1,3 +1,4 @@
 string name
-string file
+string graspit_file
+string moveit_file
 geometry_msgs/PoseStamped pose
