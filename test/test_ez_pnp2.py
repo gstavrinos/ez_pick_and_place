@@ -19,12 +19,12 @@ def main():
 
     req = EzSceneSetupRequest()
     req.gripper.name = "schunk_pg70"
-    req.gripper.file = rospack.get_path("manos_graspit_config") + "/resources/models/robots/schunk_pg70/schunk_pg70_min_contacts.xml"
+    req.gripper.graspit_file = rospack.get_path("manos_graspit_config") + "/resources/models/robots/schunk_pg70/schunk_pg70_min_contacts.xml"
     req.finger_joint_names = ["pg70_finger1_joint", "pg70_finger2_joint"]
     req.pose_factor = 1000
 
     obstacle = EzModel()
-    obstacle.file = rospack.get_path("manos_graspit_config") + "/resources/models/obstacles/manos_table.xml"
+    obstacle.graspit_file = rospack.get_path("manos_graspit_config") + "/resources/models/obstacles/manos_table.xml"
     obstacle.name = "table"
     obstacle.pose.header.frame_id = "world"
     obstacle.pose.pose.position.z = 0.43
@@ -32,7 +32,7 @@ def main():
     req.obstacles.append(obstacle)
 
     object = EzModel()
-    object.file = rospack.get_path("manos_graspit_config") + "/resources/models/objects/blue_pole_small.xml"
+    object.graspit_file = rospack.get_path("manos_graspit_config") + "/resources/models/objects/blue_pole_small.xml"
     object.name = "blue_pole_small"
     object.pose.header.frame_id = "world"
     object.pose.pose.position.x = 0.285
