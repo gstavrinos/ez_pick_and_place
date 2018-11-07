@@ -5,6 +5,7 @@ add_compile_options(-std=c++11)
 
 find_package(catkin REQUIRED COMPONENTS
   std_msgs
+  std_srvs
   geometry_msgs
   manipulation_msgs
   message_generation
@@ -13,8 +14,9 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_service_files(
    FILES
-   GraspitPlanning.srv
    EzSceneSetup.srv
+   GraspitPlanning.srv
+   EzStartPlanning.srv
 )
 
 add_message_files(

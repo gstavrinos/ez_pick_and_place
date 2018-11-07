@@ -1,0 +1,6 @@
+string graspit_object_name
+geometry_msgs/PoseStamped target_place
+int32 secs_to_timeout
+---
+bool success
+string info
