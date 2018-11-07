@@ -199,7 +199,7 @@ def scene_setup(req):
         return res
 
     except Exception as e:
-        info = e
+        info = str(e)
         error_codes = "-1"
         return False, info, error_codes
 
