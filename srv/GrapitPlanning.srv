@@ -1,9 +1,0 @@
-int32 objectID
-int32 confidence
-string detector_name
-string gripper_name
-string object_name
-string reference_frame_id # 0/1, 1 to use the object's pose
-string transform_to_frame_id
----
-PoseStamped[] candidate_poses
