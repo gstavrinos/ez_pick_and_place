@@ -2,11 +2,25 @@ EzModel[] objects
 EzModel[] obstacles
 EzModel gripper
 string[] finger_joint_names
+
 float64 pose_factor
+
+string gripper_frame
 ---
 bool success
 string info
 string error_codes
+
+int32 EXCEPTION = -1
+int32 SUCCESS = 0
+int32 NO_FINGER_JOINTS = 1
+int32 INVALID_POSE_FACTOR = 2
+int32 NO_FRAME_ID = 3
+int32 DUPLICATE_NAME = 4
+int32 NO_FILENAME = 5
+int32 NO_NAME = 6
+int32 ADD_MODEL_ERROR = 7
+int32 LOAD_MODEL_ERROR = 8
 
 # -1 = An exception occured
 # 0 = Success
