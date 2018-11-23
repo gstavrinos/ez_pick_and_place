@@ -33,6 +33,7 @@ def main():
 
     object = EzModel()
     object.graspit_file = rospack.get_path("manos_graspit_config") + "/resources/models/objects/blue_pole_small.xml"
+    object.moveit_file = rospack.get_path("roboskel_ros_resources") + "/3d_models/objects/blue_pole_small.stl"
     object.name = "blue_pole_small"
     object.pose.header.frame_id = "world"
     object.pose.pose.position.x = 0.285
@@ -44,6 +45,23 @@ def main():
     object.pose.pose.orientation.w = 0.5
 
     req.objects.append(object)
+
+    object = EzModel()
+    object.graspit_file = rospack.get_path("manos_graspit_config") + "/resources/models/objects/blue_pole_big.xml"
+    object.moveit_file = rospack.get_path("roboskel_ros_resources") + "/3d_models/objects/blue_pole_big.stl"
+    object.name = "blue_pole_big"
+    object.pose.header.frame_id = "world"
+    object.pose.pose.position.x = -0.285
+    object.pose.pose.position.y = -0.253
+    object.pose.pose.position.z = 0.96
+    object.pose.pose.orientation.x = 0.5
+    object.pose.pose.orientation.y = 0.5
+    object.pose.pose.orientation.z = 0.5
+    object.pose.pose.orientation.w = 0.5
+
+    req.objects.append(object)
+
+    req.gripper_frame = "gripper_link"
 
     response = scene_setup_srv(req)
 
