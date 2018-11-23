@@ -94,10 +94,13 @@ def fixItForGraspIt(obj, pose_factor):
     global tf_listener
     p = Pose()
     if obj.pose.header.frame_id == "world":
-        p = obj.pose.pose
-        p.position.x *= pose_factor
-        p.position.y *= pose_factor
-        p.position.z *= pose_factor
+        p.position.x = obj.pose.pose.position.x * pose_factor
+        p.position.y = obj.pose.pose.position.y * pose_factor
+        p.position.z = obj.pose.pose.position.z * pose_factor
+        p.orientation.x = obj.pose.pose.orientation.x
+        p.orientation.y = obj.pose.pose.orientation.y
+        p.orientation.z = obj.pose.pose.orientation.z
+        p.orientation.w = obj.pose.pose.orientation.w
         #TODO orientation?
     else:
         try:
@@ -131,18 +134,14 @@ def fixItForGraspIt(obj, pose_factor):
 def scene_setup(req):
     global add_model_srv, load_model_srv, planning_srv, tf_listener, moveit_scene
 
-    res = EzSceneSetupResponse()
-    res.success = True
-
     valid, info, ec = validSceneSetupInput(req)
 
+    if not valid:
+        return valid, info, error_codes
+
+    res = EzSceneSetupResponse()
+
     try:
-        if not valid:
-            res.success = False
-            res.info = info
-            res.error_codes = ec
-            return res
-        # TODO handle graspit responses
         for obj in req.objects:
             # ------ Graspit world ------
             if obj.graspit_file != "":
@@ -153,10 +152,9 @@ def scene_setup(req):
                 atd.modelName = obj.name
                 response = add_model_srv(atd)
                 if response.returnCode != response.SUCCESS:
-                    if len(res.error_codes) == 0:
-                        res.error_codes += str(response.returnCode)
-                    else:
-                        res.error_codes += str(response.returnCode) + ","
+                    res.success = False
+                    res.info += "Error adding object " + obj.name + " to graspit database,"
+                    res.error_codes += str(response.returnCode) + ","
                 else:
                     objectID = response.modelID
                     ez_objects[obj.name] = objectID
@@ -165,6 +163,11 @@ def scene_setup(req):
                     loadm.model_id = objectID
                     loadm.model_pose = fixItForGraspIt(obj, req.pose_factor)
                     response = load_model_srv(loadm)
+
+                    if response.result != response.LOAD_SUCCESS:
+                        res.success = False
+                        res.info += "Error loading object " + obj.name + " to graspit world,"
+                        res.error_codes += str(response.result) + ","
             # ---------------------------
 
             # ------ Moveit scene -------
@@ -181,10 +184,9 @@ def scene_setup(req):
                 atd.modelName = obstacle.name
                 response = add_model_srv(atd)
                 if response.returnCode != response.SUCCESS:
-                    if len(res.error_codes) == 0:
-                        res.error_codes += str(response.returnCode)
-                    else:
-                        res.error_codes += str(response.returnCode) + ","
+                    res.success = False
+                    res.info += "Error adding obstacle " + obstacle.name + " to graspit database,"
+                    res.error_codes += str(response.returnCode) + ","
                 else:
                     obstacleID = response.modelID
                     ez_obstacles[obstacle.name] = obstacleID
@@ -193,10 +195,15 @@ def scene_setup(req):
                     loadm.model_id = obstacleID
                     loadm.model_pose = fixItForGraspIt(obstacle, req.pose_factor)
                     response = load_model_srv(loadm)
+
+                    if response.result != response.LOAD_SUCCESS:
+                        res.success = False
+                        res.info += "Error loading obstacle " + obstacle.name + " to graspit world,"
+                        res.error_codes += str(response.result) + ","
             # ---------------------------
 
             # ------ Moveit scene -------
-            if obj.moveit_file != "":
+            if obstacle.moveit_file != "":
                 moveit_scene.add_mesh(obstacle.name, obstacle.pose, obstacle.moveit_file)
             # ---------------------------
 
@@ -209,9 +216,8 @@ def scene_setup(req):
         atd.jointNames = req.finger_joint_names
         response = add_model_srv(atd)
         if response.returnCode != response.SUCCESS:
-            if len(res.error_codes) == 0:
-                res.error_codes += str(response.returnCode)
-            else:
+                res.success = False
+                res.info += "Error adding robot " + req.gripper.name + " to graspit database,"
                 res.error_codes += str(response.returnCode) + ","
         else:
             robotID = response.modelID
@@ -225,8 +231,17 @@ def scene_setup(req):
             p.position.z = gripper_pos[2] * req.pose_factor
             # TODO orientation is not important (right?)
             loadm.model_pose = p
+            response = load_model_srv(loadm)
+
+            if response.result != response.LOAD_SUCCESS:
+                res.success = False
+                res.info += "Error loading robot " + req.gripper.name + " to graspit world,"
+                res.error_codes += str(response.result) + ","
         # ---------------------------
 
+        if len(res.error_codes) > 0 and res.error_codes[-1] == ",":
+            res.error_codes = res.error_codes[:-1]
+            res.info = res.info[:-1]
         return res
 
     except Exception as e:
