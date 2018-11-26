@@ -29,63 +29,63 @@ def stopPlanning(req):
 def validSceneSetupInput(req):
     tmp = dict()
     tmp2 = EzSceneSetupResponse()
-    info = ""
-    error_codes = str(tmp2.SUCCESS)
+    info = []
+    error_codes = []
     if len(req.finger_joint_names) == 0:
-        info = "Invalid service input: No finger_joint_names provided"
-        error_codes = str(tmp2.NO_FINGER_JOINTS)
+        info.append("Invalid service input: No finger_joint_names provided")
+        error_codes.append(tmp2.NO_FINGER_JOINTS)
         return False, info, error_codes
     if req.gripper.name == "":
-        info = "Invalid service input: No gripper name provided"
-        error_codes = str(tmp2.NO_NAME)
+        info.append("Invalid service input: No gripper name provided")
+        error_codes.append(tmp2.NO_NAME)
         return False, info, error_codes
     if req.gripper.graspit_file == "":
-        info = "Invalid service input: No graspit filename provided for the gripper"
-        error_codes = str(tmp2.NO_FILENAME)
+        info.append("Invalid service input: No graspit filename provided for the gripper")
+        error_codes.append(tmp2.NO_FILENAME)
         return False, info, error_codes
     if req.pose_factor <= 0:
-        info = "Invalid service input: pose_factor cannot be negative or zero"
-        error_codes = str(tmp2.INVALID_POSE_FACTOR)
+        info.append("Invalid service input: pose_factor cannot be negative or zero")
+        error_codes.append(tmp2.INVALID_POSE_FACTOR)
         return False, info, error_codes
 
     for obj in req.objects:
         if obj.name == "":
-            info = "Invalid service input: No object name provided"
-            error_codes = str(tmp2.NO_NAME)
+            info.append("Invalid service input: No object name provided")
+            error_codes.append(tmp2.NO_NAME)
             return False, info, error_codes
         if obj.name in tmp:
-            info = "Invalid service input: Duplicate name: " + obj.name
-            error_codes = str(tmp2.DUPLICATE_NAME)
+            info.append("Invalid service input: Duplicate name: " + obj.name)
+            error_codes.append(tmp2.DUPLICATE_NAME)
             return False, info, error_codes
         else:
             tmp[obj.name] = 0
         if obj.graspit_file == "" and obj.moveit_file == "":
-            info = "Invalid service input: No file provided for object: " + obj.name
-            error_codes = str(tmp2.NO_FILENAME)
+            info.append("Invalid service input: No file provided for object: " + obj.name)
+            error_codes.append(tmp2.NO_FILENAME)
             return False, info, error_codes
         if obj.pose.header.frame_id == "":
-            info = "Invalid service input: No frame_id in PoseStamped message of object: " + obj.name
-            error_codes = str(tmp2.NO_FRAME_ID)
+            info.append("Invalid service input: No frame_id in PoseStamped message of object: " + obj.name)
+            error_codes.append(tmp2.NO_FRAME_ID)
             return False, info, error_codes
 
     for obs in req.obstacles:
         if obs.name == "":
-            info = "Invalid service input: No obstacle name provided"
-            error_codes = str(tmp2.NO_NAME)
+            info.append("Invalid service input: No obstacle name provided")
+            error_codes.append(tmp2.NO_NAME)
             return False, info, error_codes
         if obs.name in tmp:
-            info = "Invalid service input: Duplicate name: " + obs.name
-            error_codes = str(tmp2.DUPLICATE_NAME)
+            info.append("Invalid service input: Duplicate name: " + obs.name)
+            error_codes.append(tmp2.DUPLICATE_NAME)
             return False, info, error_codes
         else:
             tmp[obs.name] = 0
         if obs.graspit_file == "" and obs.moveit_file == "":
-            info = "Invalid service input: No file provided for obstacle: " + obs.name
-            error_codes = str(tmp2.NO_FILENAME)
+            info.append("Invalid service input: No file provided for obstacle: " + obs.name)
+            error_codes.append(tmp2.NO_FILENAME)
             return False, info, error_codes
         if obs.pose.header.frame_id == "":
-            info = "Invalid service input: No frame_id in PoseStamped message of obstacle: " + obs.name
-            error_codes = str(tmp2.NO_FRAME_ID)
+            info.append("Invalid service input: No frame_id in PoseStamped message of obstacle: " + obs.name)
+            error_codes.append(tmp2.NO_FRAME_ID)
             return False, info, error_codes
     return True, info, error_codes
 
@@ -153,8 +153,8 @@ def scene_setup(req):
                 response = add_model_srv(atd)
                 if response.returnCode != response.SUCCESS:
                     res.success = False
-                    res.info += "Error adding object " + obj.name + " to graspit database,"
-                    res.error_codes += str(response.returnCode) + ","
+                    res.info.append("Error adding object " + obj.name + " to graspit database")
+                    res.error_codes.append(response.returnCode)
                 else:
                     objectID = response.modelID
                     ez_objects[obj.name] = objectID
@@ -166,8 +166,8 @@ def scene_setup(req):
 
                     if response.result != response.LOAD_SUCCESS:
                         res.success = False
-                        res.info += "Error loading object " + obj.name + " to graspit world,"
-                        res.error_codes += str(response.result) + ","
+                        res.info.append("Error loading object " + obj.name + " to graspit world")
+                        res.error_codes.append(response.result)
             # ---------------------------
 
             # ------ Moveit scene -------
@@ -185,8 +185,8 @@ def scene_setup(req):
                 response = add_model_srv(atd)
                 if response.returnCode != response.SUCCESS:
                     res.success = False
-                    res.info += "Error adding obstacle " + obstacle.name + " to graspit database,"
-                    res.error_codes += str(response.returnCode) + ","
+                    res.info.append("Error adding obstacle " + obstacle.name + " to graspit database")
+                    res.error_codes.append(response.returnCode)
                 else:
                     obstacleID = response.modelID
                     ez_obstacles[obstacle.name] = obstacleID
@@ -198,8 +198,8 @@ def scene_setup(req):
 
                     if response.result != response.LOAD_SUCCESS:
                         res.success = False
-                        res.info += "Error loading obstacle " + obstacle.name + " to graspit world,"
-                        res.error_codes += str(response.result) + ","
+                        res.info.append("Error loading obstacle " + obstacle.name + " to graspit world")
+                        res.error_codes.append(response.result)
             # ---------------------------
 
             # ------ Moveit scene -------
@@ -217,8 +217,8 @@ def scene_setup(req):
         response = add_model_srv(atd)
         if response.returnCode != response.SUCCESS:
                 res.success = False
-                res.info += "Error adding robot " + req.gripper.name + " to graspit database,"
-                res.error_codes += str(response.returnCode) + ","
+                res.info.append("Error adding robot " + req.gripper.name + " to graspit database")
+                res.error_codes.append(response.returnCode)
         else:
             robotID = response.modelID
 
@@ -235,18 +235,15 @@ def scene_setup(req):
 
             if response.result != response.LOAD_SUCCESS:
                 res.success = False
-                res.info += "Error loading robot " + req.gripper.name + " to graspit world,"
-                res.error_codes += str(response.result) + ","
+                res.info.append("Error loading robot " + req.gripper.name + " to graspit world")
+                res.error_codes.append(response.result)
         # ---------------------------
 
-        if len(res.error_codes) > 0 and res.error_codes[-1] == ",":
-            res.error_codes = res.error_codes[:-1]
-            res.info = res.info[:-1]
         return res
 
     except Exception as e:
-        info = str(e)
-        error_codes = str(res.EXCEPTION)
+        info.append(str(e))
+        error_codes.append(res.EXCEPTION)
         return False, info, error_codes
 
 def main():
