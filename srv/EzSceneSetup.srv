@@ -8,8 +8,8 @@ float64 pose_factor
 string gripper_frame
 ---
 bool success
-string info
-string error_codes
+string[] info
+int32[] error_codes
 
 int32 EXCEPTION = -1
 int32 SUCCESS = 0
