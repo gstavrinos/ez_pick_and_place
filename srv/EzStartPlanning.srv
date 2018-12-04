@@ -1,4 +1,4 @@
-string graspit_object_name
+string graspit_target_object
 geometry_msgs/PoseStamped target_place
 int32 secs_to_timeout
 bool allow_replanning

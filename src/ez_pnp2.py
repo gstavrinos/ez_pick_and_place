@@ -6,7 +6,9 @@ import moveit_commander
 
 from grasp_planning_graspit_msgs.srv import AddToDatabase, LoadDatabaseModel, AddToDatabaseRequest, LoadDatabaseModelRequest
 from ez_pick_and_place.srv import EzSceneSetup, EzSceneSetupResponse, EzStartPlanning
+from household_objects_database_msgs.msg import DatabaseModelPose
 from geometry_msgs.msg import TransformStamped, PoseStamped, Pose
+from manipulation_msgs.msg import GraspableObject
 from manipulation_msgs.srv import GraspPlanning
 from std_srvs.srv import Trigger
 
@@ -19,10 +21,39 @@ load_model_srv = None
 ez_objects = dict()
 ez_obstacles = dict()
 
-def startPlanning(req):
-    return True, ""
+gripper_name = None
+
+keep_planning = True
 
 def stopPlanning(req):
+    keep_planning = False
+    return True, ""
+
+def startPlanning(req):
+    global keep_planning, ez_objects, gripper_name
+    print "Started planning!"
+    keep_planning = True
+    remaining_secs = req.secs_to_timeout
+    timeout_disabled = req.secs_to_timeout <= 0
+    t0 = rospy.Time.now()
+    while keep_planning and (timeout_disabled or remaining_secs > 0) and not rospy.is_shutdown():
+        try:
+            suc = False
+            dbmp = DatabaseModelPose()
+            dbmp.model_id = ez_objects[req.graspit_target_object]
+            dbmp.confidence = 1
+            dbmp.detector_name = "manual_detection"
+            planning_req = GraspPlanning()
+            target = GraspableObject()
+            target.reference_frame_id = "1"
+            target.potential_models = [dbmp]
+            response = planning_srv(arm_name = gripper_name, target = target)
+
+            print response.grasps
+
+            keep_planning = False
+        except Exception as e:
+            print str(e)
     return True, ""
 
 # Check if the input of the scene setup service is valid
@@ -133,6 +164,7 @@ def fixItForGraspIt(obj, pose_factor):
 
 def scene_setup(req):
     global add_model_srv, load_model_srv, planning_srv, tf_listener, moveit_scene
+    global ez_objects, ez_obstacles, gripper_name
 
     valid, info, ec = validSceneSetupInput(req)
 
@@ -140,6 +172,7 @@ def scene_setup(req):
         return valid, info, error_codes
 
     res = EzSceneSetupResponse()
+    res.success = True
 
     try:
         for obj in req.objects:
@@ -220,6 +253,7 @@ def scene_setup(req):
                 res.info.append("Error adding robot " + req.gripper.name + " to graspit database")
                 res.error_codes.append(response.returnCode)
         else:
+            gripper_name = req.gripper.name
             robotID = response.modelID
 
             loadm = LoadDatabaseModelRequest()
