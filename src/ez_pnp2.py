@@ -29,28 +29,69 @@ def stopPlanning(req):
     keep_planning = False
     return True, ""
 
+def move(arm_move_group, pose):
+    arm_move_group.set_pose_target(pose)
+    return arm_move_group.go()
+
+def graspThis(object_name):
+    global ez_objects, gripper_name
+
+    dbmp = DatabaseModelPose()
+    dbmp.model_id = ez_objects[object_name]
+    dbmp.confidence = 1
+    dbmp.detector_name = "manual_detection"
+    planning_req = GraspPlanning()
+    target = GraspableObject()
+    target.reference_frame_id = "1"
+    target.potential_models = [dbmp]
+    response = planning_srv(arm_name = gripper_name, target = target)
+
+    return response.grasps
+
+def nextGraspIndex(next_grasp_index, grasps):
+    next_grasp_index += 1
+    if next_grasp_index >= len(grasps):
+        next_grasp_index = 0
+    return next_grasp_index
+
 def startPlanning(req):
-    global keep_planning, ez_objects, gripper_name
-    print "Started planning!"
+    global keep_planning
+
+    robot_commander = moveit_commander.RobotCommander()
+
+    arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
+
     keep_planning = True
     remaining_secs = req.secs_to_timeout
     timeout_disabled = req.secs_to_timeout <= 0
     t0 = rospy.Time.now()
+    holding_object = False
+    try:
+        suc = False
+        graspit_grasps = graspThis(req.graspit_target_object)
+        fixed_grasps = translateGraspIt2MoveIt(graspit_grasps)
+        next_grasp_index = 0
+        near_grasp_pose = PoseStamped()
+    except Exception as e:
+        print str(e)
     while keep_planning and (timeout_disabled or remaining_secs > 0) and not rospy.is_shutdown():
         try:
-            suc = False
-            dbmp = DatabaseModelPose()
-            dbmp.model_id = ez_objects[req.graspit_target_object]
-            dbmp.confidence = 1
-            dbmp.detector_name = "manual_detection"
-            planning_req = GraspPlanning()
-            target = GraspableObject()
-            target.reference_frame_id = "1"
-            target.potential_models = [dbmp]
-            response = planning_srv(arm_name = gripper_name, target = target)
-
-            print response.grasps
-
+            if not holding_object:
+                near_grasp_pose = calcNearGraspPose(fixed_grasps[next_grasp_index])
+                # Did we successfully move to the pre-grasping position?
+                if move(arm_move_group, near_grasp_pose):
+                    print "Reached pregrasp pose!"
+                    if move(arm_move_group, fixed_grasps[next_grasp_index]):
+                        print "Reached grasp pose!"
+                        # TODO send grasp command
+                        print "Holding the object!"
+                        holding_object = True
+                        continue
+                else:
+                    next_grasp_index = nextGraspIndex(next_grasp_index, fixed_grasps)
+            else:
+                # TODO use the pregrasp position as a post grasp position too
+                pass
             keep_planning = False
         except Exception as e:
             print str(e)
@@ -162,6 +203,18 @@ def fixItForGraspIt(obj, pose_factor):
 
     return p
 
+# TODO ensure that it is the y axis, just to be sure that the comment is accurate
+# GraspIt and MoveIt appear to have a 90 degree difference in the y (?) axis
+def translateGraspIt2MoveIt(grasps):
+    # TODO
+    fixed_grasps = grasps
+    return fixed_grasps
+
+def calcNearGraspPose(pose):
+    # TODO
+    near_pose = pose
+    return near_pose
+
 def scene_setup(req):
     global add_model_srv, load_model_srv, planning_srv, tf_listener, moveit_scene
     global ez_objects, ez_obstacles, gripper_name
@@ -169,7 +222,7 @@ def scene_setup(req):
     valid, info, ec = validSceneSetupInput(req)
 
     if not valid:
-        return valid, info, error_codes
+        return valid, info, ec
 
     res = EzSceneSetupResponse()
     res.success = True
@@ -277,8 +330,8 @@ def scene_setup(req):
 
     except Exception as e:
         info.append(str(e))
-        error_codes.append(res.EXCEPTION)
-        return False, info, error_codes
+        ec.append(res.EXCEPTION)
+        return False, info, ec
 
 def main():
     global add_model_srv, load_model_srv, planning_srv, tf_listener, moveit_scene
