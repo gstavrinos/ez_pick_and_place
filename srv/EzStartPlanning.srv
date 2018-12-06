@@ -4,6 +4,7 @@ string arm_move_group
 string gripper_move_group
 int32 secs_to_timeout
 bool allow_replanning
+string reset_position
 ---
 bool success
 string info

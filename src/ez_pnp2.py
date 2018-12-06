@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import tf
 import sys
+import time
 import rospy
 import moveit_commander
 
@@ -29,8 +30,14 @@ def stopPlanning(req):
     keep_planning = False
     return True, ""
 
+def reset(arm_move_group, req):
+    if req.reset_position:
+        arm_move_group.set_named_target(req.reset_position)
+        arm_move_group.go()
+
 def move(arm_move_group, pose):
     arm_move_group.set_pose_target(pose)
+    #arm_move_group.set_pose_target(PoseStamped())
     return arm_move_group.go()
 
 def graspThis(object_name):
@@ -64,37 +71,46 @@ def startPlanning(req):
     keep_planning = True
     remaining_secs = req.secs_to_timeout
     timeout_disabled = req.secs_to_timeout <= 0
-    t0 = rospy.Time.now()
-    holding_object = False
+    t0 = time.clock()
+    # TODO add info on service regarding a reset position
     try:
-        suc = False
+        holding_object = False
         graspit_grasps = graspThis(req.graspit_target_object)
         fixed_grasps = translateGraspIt2MoveIt(graspit_grasps)
         next_grasp_index = 0
         near_grasp_pose = PoseStamped()
+        while keep_planning and (timeout_disabled or remaining_secs > 0) and not rospy.is_shutdown():
+            if not timeout_disabled:
+                remaining_secs -= time.clock() - t0
+            try:
+                if not holding_object:
+                    near_grasp_pose = calcNearGraspPose(fixed_grasps[next_grasp_index])
+                    # Did we successfully move to the pre-grasping position?
+                    if move(arm_move_group, near_grasp_pose):
+                        print "Reached pregrasp pose!"
+                        if move(arm_move_group, fixed_grasps[next_grasp_index]):
+                            print "Reached grasp pose!"
+                            # TODO send grasp command
+                            print "Holding the object!"
+                            holding_object = True
+                            continue
+                        else:
+                            # TODO don;t get stuck here!
+                            pass
+                    else:
+                        reset(arm_move_group, req)
+                        next_grasp_index = nextGraspIndex(next_grasp_index, fixed_grasps)
+                else:
+                    # TODO use the pregrasp position as a post grasp position too
+                    pass
+                #keep_planning = False
+            except Exception as e:
+                print str(e)
     except Exception as e:
         print str(e)
-    while keep_planning and (timeout_disabled or remaining_secs > 0) and not rospy.is_shutdown():
-        try:
-            if not holding_object:
-                near_grasp_pose = calcNearGraspPose(fixed_grasps[next_grasp_index])
-                # Did we successfully move to the pre-grasping position?
-                if move(arm_move_group, near_grasp_pose):
-                    print "Reached pregrasp pose!"
-                    if move(arm_move_group, fixed_grasps[next_grasp_index]):
-                        print "Reached grasp pose!"
-                        # TODO send grasp command
-                        print "Holding the object!"
-                        holding_object = True
-                        continue
-                else:
-                    next_grasp_index = nextGraspIndex(next_grasp_index, fixed_grasps)
-            else:
-                # TODO use the pregrasp position as a post grasp position too
-                pass
-            keep_planning = False
-        except Exception as e:
-            print str(e)
+        return False, str(e)
+    if not timeout_disabled and remaining_secs <= 0:
+        return False, "Timeout!"
     return True, ""
 
 # Check if the input of the scene setup service is valid
@@ -207,7 +223,12 @@ def fixItForGraspIt(obj, pose_factor):
 # GraspIt and MoveIt appear to have a 90 degree difference in the y (?) axis
 def translateGraspIt2MoveIt(grasps):
     # TODO
-    fixed_grasps = grasps
+    fixed_grasps = []
+    for g in grasps:
+        p = PoseStamped()
+        p.header.frame_id = "world"
+        p.pose = g.grasp_pose.pose
+        fixed_grasps.append(p)
     return fixed_grasps
 
 def calcNearGraspPose(pose):
