@@ -79,6 +79,7 @@ def startPlanning(req):
         fixed_grasps = translateGraspIt2MoveIt(graspit_grasps)
         next_grasp_index = 0
         near_grasp_pose = PoseStamped()
+        near_place_pose = PoseStamped()
         while keep_planning and (timeout_disabled or remaining_secs > 0) and not rospy.is_shutdown():
             if not timeout_disabled:
                 remaining_secs -= time.clock() - t0
@@ -95,14 +96,29 @@ def startPlanning(req):
                             holding_object = True
                             continue
                         else:
-                            # TODO don;t get stuck here!
+                            # TODO don't get stuck here!
                             pass
                     else:
                         reset(arm_move_group, req)
                         next_grasp_index = nextGraspIndex(next_grasp_index, fixed_grasps)
                 else:
-                    # TODO use the pregrasp position as a post grasp position too
-                    pass
+                    # TODO do not get back to postgrasp position if you reset, or if you
+                    # succeed once
+                    if move(arm_move_group, near_grasp_pose):
+                        print "Reached postgrasp pose!"
+                        near_place_pose = calcNearPlacePose(req.target_place)
+                        if move(arm_move_group, near_place_pose):
+                            print "Reached preplace pose!"
+                            if move(arm_move_group, req.target_place):
+                                print "Reached place pose!"
+                                # TODO send ungrip command
+                                print "Placed the object!"
+                                holding_object = False
+                                # stop trying now, but also try as a last move to
+                                # reach the preplace pose again
+                                move(arm_move_group, near_place_pose)
+                                return True, "That was smoooooth :)"
+
                 #keep_planning = False
             except Exception as e:
                 print str(e)
@@ -232,6 +248,11 @@ def translateGraspIt2MoveIt(grasps):
     return fixed_grasps
 
 def calcNearGraspPose(pose):
+    # TODO
+    near_pose = pose
+    return near_pose
+
+def calcNearPlacePose(pose):
     # TODO
     near_pose = pose
     return near_pose
