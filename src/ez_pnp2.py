@@ -23,6 +23,7 @@ ez_objects = dict()
 ez_obstacles = dict()
 
 gripper_name = None
+gripper_frame = None
 
 keep_planning = True
 
@@ -44,7 +45,7 @@ def graspThis(object_name):
     global ez_objects, gripper_name
 
     dbmp = DatabaseModelPose()
-    dbmp.model_id = ez_objects[object_name]
+    dbmp.model_id = ez_objects[object_name][0]
     dbmp.confidence = 1
     dbmp.detector_name = "manual_detection"
     planning_req = GraspPlanning()
@@ -62,7 +63,7 @@ def nextGraspIndex(next_grasp_index, grasps):
     return next_grasp_index
 
 def startPlanning(req):
-    global keep_planning
+    global keep_planning, gripper_frame
 
     robot_commander = moveit_commander.RobotCommander()
 
@@ -76,7 +77,7 @@ def startPlanning(req):
     try:
         holding_object = False
         graspit_grasps = graspThis(req.graspit_target_object)
-        fixed_grasps = translateGraspIt2MoveIt(graspit_grasps)
+        fixed_grasps = translateGraspIt2MoveIt(graspit_grasps, arm_move_group.get_end_effector_link(), req.graspit_target_object)
         next_grasp_index = 0
         near_grasp_pose = PoseStamped()
         near_place_pose = PoseStamped()
@@ -89,15 +90,19 @@ def startPlanning(req):
                     # Did we successfully move to the pre-grasping position?
                     if move(arm_move_group, near_grasp_pose):
                         print "Reached pregrasp pose!"
+                        time.sleep(2)
                         if move(arm_move_group, fixed_grasps[next_grasp_index]):
                             print "Reached grasp pose!"
+                            time.sleep(2)
                             # TODO send grasp command
                             print "Holding the object!"
+                            time.sleep(5)
                             holding_object = True
                             continue
                         else:
                             # TODO don't get stuck here!
-                            pass
+                            # I think continue solves the problem (?)
+                            continue
                     else:
                         reset(arm_move_group, req)
                         next_grasp_index = nextGraspIndex(next_grasp_index, fixed_grasps)
@@ -109,10 +114,13 @@ def startPlanning(req):
                         near_place_pose = calcNearPlacePose(req.target_place)
                         if move(arm_move_group, near_place_pose):
                             print "Reached preplace pose!"
+                            time.sleep(2)
                             if move(arm_move_group, req.target_place):
                                 print "Reached place pose!"
+                                time.sleep(2)
                                 # TODO send ungrip command
                                 print "Placed the object!"
+                                time.sleep(5)
                                 holding_object = False
                                 # stop trying now, but also try as a last move to
                                 # reach the preplace pose again
@@ -237,14 +245,76 @@ def fixItForGraspIt(obj, pose_factor):
 
 # TODO ensure that it is the y axis, just to be sure that the comment is accurate
 # GraspIt and MoveIt appear to have a 90 degree difference in the y (?) axis
-def translateGraspIt2MoveIt(grasps):
-    # TODO
+def translateGraspIt2MoveIt(grasps, eef_link, object_name):
+    global ez_objects, gripper_frame
     fixed_grasps = []
     for g in grasps:
-        p = PoseStamped()
-        p.header.frame_id = "world"
-        p.pose = g.grasp_pose.pose
-        fixed_grasps.append(p)
+        try:
+            transform = TransformStamped()
+            transform.header.stamp = rospy.Time.now()
+            transform.header.frame_id = "world"
+            transform.child_frame_id = "target_object_frame"
+            transform.transform.translation.x = ez_objects[object_name][1].pose.position.x
+            transform.transform.translation.y = ez_objects[object_name][1].pose.position.y
+            transform.transform.translation.z = ez_objects[object_name][1].pose.position.z
+            transform.transform.rotation.x = ez_objects[object_name][1].pose.orientation.x
+            transform.transform.rotation.y = ez_objects[object_name][1].pose.orientation.y
+            transform.transform.rotation.z = ez_objects[object_name][1].pose.orientation.z
+            transform.transform.rotation.w = ez_objects[object_name][1].pose.orientation.w
+            tf_listener.setTransform(transform, "ez_helper")
+
+            transform = TransformStamped()
+            transform.header.stamp = rospy.Time.now()
+            transform.header.frame_id = "target_object_frame"
+            transform.child_frame_id = "ez_helper_graspit_pose"
+            transform.transform.translation.x = g.grasp_pose.pose.position.x
+            transform.transform.translation.y = g.grasp_pose.pose.position.y
+            transform.transform.translation.z = g.grasp_pose.pose.position.z
+            transform.transform.rotation.x = g.grasp_pose.pose.orientation.x
+            transform.transform.rotation.y = g.grasp_pose.pose.orientation.y
+            transform.transform.rotation.z = g.grasp_pose.pose.orientation.z
+            transform.transform.rotation.w = g.grasp_pose.pose.orientation.w
+            tf_listener.setTransform(transform, "ez_helper")
+
+            graspit_moveit_transform = TransformStamped()
+            graspit_moveit_transform.header.stamp = rospy.Time.now()
+            graspit_moveit_transform.header.frame_id = "ez_helper_graspit_pose"
+            graspit_moveit_transform.child_frame_id = "ez_helper_fixed_graspit_pose"
+            graspit_moveit_transform.transform.rotation.x = 0.5
+            graspit_moveit_transform.transform.rotation.y = 0.5
+            graspit_moveit_transform.transform.rotation.z = 0.5
+            graspit_moveit_transform.transform.rotation.w = 0.5
+            tf_listener.setTransform(graspit_moveit_transform, "ez_helper")
+
+            transform_frame_gripper_trans, transform_frame_gripper_rot = tf_listener.lookupTransform(gripper_frame, eef_link, rospy.Time(0))
+
+            transform = TransformStamped()
+            transform.header.stamp = rospy.Time.now()
+            transform.header.frame_id = "ez_helper_fixed_graspit_pose"
+            transform.child_frame_id = "ez_helper_target_graspit_pose"
+            transform.transform.translation.x = transform_frame_gripper_trans[0]
+            transform.transform.translation.y = transform_frame_gripper_trans[1]
+            transform.transform.translation.z = transform_frame_gripper_trans[2]
+            transform.transform.rotation.x = transform_frame_gripper_rot[0]
+            transform.transform.rotation.y = transform_frame_gripper_rot[1]
+            transform.transform.rotation.z = transform_frame_gripper_rot[2]
+            transform.transform.rotation.w = transform_frame_gripper_rot[3]
+            tf_listener.setTransform(transform, "ez_helper")
+
+            target_trans, target_rot = tf_listener.lookupTransform("world", "ez_helper_target_graspit_pose", rospy.Time(0))
+
+            g.grasp_pose.header.frame_id = "world"
+            g.grasp_pose.pose.position.x = target_trans[0]
+            g.grasp_pose.pose.position.y = target_trans[1]
+            g.grasp_pose.pose.position.z = target_trans[2]
+            g.grasp_pose.pose.orientation.x = target_rot[0]
+            g.grasp_pose.pose.orientation.y = target_rot[1]
+            g.grasp_pose.pose.orientation.z = target_rot[2]
+            g.grasp_pose.pose.orientation.w = target_rot[3]
+            fixed_grasps.append(g.grasp_pose)
+        except Exception as e:
+            print 'lalala'
+            print e
     return fixed_grasps
 
 def calcNearGraspPose(pose):
@@ -259,9 +329,11 @@ def calcNearPlacePose(pose):
 
 def scene_setup(req):
     global add_model_srv, load_model_srv, planning_srv, tf_listener, moveit_scene
-    global ez_objects, ez_obstacles, gripper_name
+    global ez_objects, ez_obstacles, gripper_name, gripper_frame
 
     valid, info, ec = validSceneSetupInput(req)
+
+    gripper_frame = req.gripper_frame
 
     if not valid:
         return valid, info, ec
@@ -285,12 +357,13 @@ def scene_setup(req):
                     res.error_codes.append(response.returnCode)
                 else:
                     objectID = response.modelID
-                    ez_objects[obj.name] = objectID
 
                     loadm = LoadDatabaseModelRequest()
                     loadm.model_id = objectID
                     loadm.model_pose = fixItForGraspIt(obj, req.pose_factor)
                     response = load_model_srv(loadm)
+
+                    ez_objects[obj.name] = [objectID, obj.pose]
 
                     if response.result != response.LOAD_SUCCESS:
                         res.success = False
@@ -317,12 +390,13 @@ def scene_setup(req):
                     res.error_codes.append(response.returnCode)
                 else:
                     obstacleID = response.modelID
-                    ez_obstacles[obstacle.name] = obstacleID
 
                     loadm = LoadDatabaseModelRequest()
                     loadm.model_id = obstacleID
                     loadm.model_pose = fixItForGraspIt(obstacle, req.pose_factor)
                     response = load_model_srv(loadm)
+
+                    ez_obstacles[obstacle.name] = [obstacleID, obstacle.pose]
 
                     if response.result != response.LOAD_SUCCESS:
                         res.success = False
@@ -354,7 +428,7 @@ def scene_setup(req):
             loadm = LoadDatabaseModelRequest()
             loadm.model_id = robotID
             p = Pose()
-            gripper_pos, gripper_rot = tf_listener.lookupTransform(req.gripper_frame, "world", rospy.Time(0))
+            gripper_pos, gripper_rot = tf_listener.lookupTransform(gripper_frame, "world", rospy.Time(0))
             p.position.x = gripper_pos[0] * req.pose_factor
             p.position.y = gripper_pos[1] * req.pose_factor
             p.position.z = gripper_pos[2] * req.pose_factor
