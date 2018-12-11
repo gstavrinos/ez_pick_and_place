@@ -102,6 +102,7 @@ def startPlanning(req):
                         else:
                             # TODO don't get stuck here!
                             # I think continue solves the problem (?)
+                            next_grasp_index = nextGraspIndex(next_grasp_index, fixed_grasps)
                             continue
                     else:
                         reset(arm_move_group, req)
@@ -319,8 +320,13 @@ def translateGraspIt2MoveIt(grasps, eef_link, object_name):
     return fixed_grasps
 
 def calcNearGraspPose(pose):
-    # TODO
-    near_pose = pose
+    # TODO steal the graspit pose
+    near_pose = PoseStamped()
+    near_pose.header = pose.header
+    near_pose.pose.position.x = pose.pose.position.x
+    near_pose.pose.position.y = pose.pose.position.y
+    near_pose.pose.position.z = pose.pose.position.z + 0.05
+    near_pose.pose.orientation = pose.pose.orientation
     return near_pose
 
 def calcNearPlacePose(pose):
