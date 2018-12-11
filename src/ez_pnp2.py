@@ -38,7 +38,6 @@ def reset(arm_move_group, req):
 
 def move(arm_move_group, pose):
     arm_move_group.set_pose_target(pose)
-    #arm_move_group.set_pose_target(PoseStamped())
     return arm_move_group.go()
 
 def graspThis(object_name):
@@ -62,6 +61,7 @@ def nextGraspIndex(next_grasp_index, grasps):
         next_grasp_index = 0
     return next_grasp_index
 
+# TODO req.allow_replanning
 def startPlanning(req):
     global keep_planning, gripper_frame
 
@@ -111,6 +111,7 @@ def startPlanning(req):
                     # succeed once
                     if move(arm_move_group, near_grasp_pose):
                         print "Reached postgrasp pose!"
+                        time.sleep(2)
                         near_place_pose = calcNearPlacePose(req.target_place)
                         if move(arm_move_group, near_place_pose):
                             print "Reached preplace pose!"
