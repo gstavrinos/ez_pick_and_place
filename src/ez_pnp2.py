@@ -34,7 +34,7 @@ def stopPlanning(req):
 def reset(arm_move_group, req):
     if req.reset_position:
         arm_move_group.set_named_target(req.reset_position)
-        arm_move_group.go()
+        return arm_move_group.go()
 
 def move(arm_move_group, pose):
     arm_move_group.set_pose_target(pose)
@@ -57,11 +57,20 @@ def graspThis(object_name):
 
 def nextGraspIndex(next_grasp_index, grasps):
     next_grasp_index += 1
+    looped = False
     if next_grasp_index >= len(grasps):
         next_grasp_index = 0
-    return next_grasp_index
+        looped = True
+    return next_grasp_index, looped
 
-# TODO req.allow_replanning
+# TODO use set_start_state of the move group
+# so that we can plan the whole thing without 
+# moving the robot!
+# TODO2 send a moveit goal for the gripper positions,
+# and since SCHUNK PG70 drivers suck,
+# create a wrapper of those messages to make the required
+# service calls to the PG70 drivers
+# TODO3? It seems to be a bug with timeout (?!)
 def startPlanning(req):
     global keep_planning, gripper_frame
 
@@ -73,6 +82,8 @@ def startPlanning(req):
     remaining_secs = req.secs_to_timeout
     timeout_disabled = req.secs_to_timeout <= 0
     t0 = time.clock()
+    on_reset_pose = False
+    away_from_grasp_pose = True
     # TODO add info on service regarding a reset position
     try:
         holding_object = False
@@ -89,9 +100,11 @@ def startPlanning(req):
                     near_grasp_pose = calcNearGraspPose(fixed_grasps[next_grasp_index])
                     # Did we successfully move to the pre-grasping position?
                     if move(arm_move_group, near_grasp_pose):
+                        on_reset_pose = False
                         print "Reached pregrasp pose!"
                         time.sleep(2)
                         if move(arm_move_group, fixed_grasps[next_grasp_index]):
+                            away_from_grasp_pose = False
                             print "Reached grasp pose!"
                             time.sleep(2)
                             # TODO send grasp command
@@ -100,20 +113,29 @@ def startPlanning(req):
                             holding_object = True
                             continue
                         else:
-                            # TODO don't get stuck here!
-                            # I think continue solves the problem (?)
-                            next_grasp_index = nextGraspIndex(next_grasp_index, fixed_grasps)
+                            next_grasp_index, looped = nextGraspIndex(next_grasp_index, fixed_grasps)
+                            if looped and req.allow_replanning:
+                                graspit_grasps = graspThis(req.graspit_target_object)
+                                fixed_grasps = translateGraspIt2MoveIt(graspit_grasps, arm_move_group.get_end_effector_link(), req.graspit_target_object)
+                                next_grasp_index = 0
                             continue
                     else:
-                        reset(arm_move_group, req)
-                        next_grasp_index = nextGraspIndex(next_grasp_index, fixed_grasps)
+                        if not on_reset_pose and reset(arm_move_group, req):
+                            on_reset_pose = True
+                        next_grasp_index, looped = nextGraspIndex(next_grasp_index, fixed_grasps)
+                        if looped and req.allow_replanning:
+                            graspit_grasps = graspThis(req.graspit_target_object)
+                            fixed_grasps = translateGraspIt2MoveIt(graspit_grasps, arm_move_group.get_end_effector_link(), req.graspit_target_object)
+                            next_grasp_index = 0
                 else:
                     # TODO do not get back to postgrasp position if you reset, or if you
                     # succeed once
-                    if move(arm_move_group, near_grasp_pose):
+                    if away_from_grasp_pose or move(arm_move_group, near_grasp_pose):
+                        on_reset_pose = False
+                        away_from_grasp_pose = True
                         print "Reached postgrasp pose!"
                         time.sleep(2)
-                        near_place_pose = calcNearPlacePose(req.target_place)
+                        near_place_pose = calcNearPlacePose(req.target_place, near_grasp_pose)
                         if move(arm_move_group, near_place_pose):
                             print "Reached preplace pose!"
                             time.sleep(2)
@@ -128,8 +150,13 @@ def startPlanning(req):
                                 # reach the preplace pose again
                                 move(arm_move_group, near_place_pose)
                                 return True, "That was smoooooth :)"
+                        elif not on_reset_pose and reset(arm_move_group, req):
+                                on_reset_pose = True
+                                away_from_grasp_pose = True
+                    elif not on_reset_pose and reset(arm_move_group, req):
+                            on_reset_pose = True
+                            away_from_grasp_pose = True
 
-                #keep_planning = False
             except Exception as e:
                 print str(e)
     except Exception as e:
@@ -315,23 +342,56 @@ def translateGraspIt2MoveIt(grasps, eef_link, object_name):
             g.grasp_pose.pose.orientation.w = target_rot[3]
             fixed_grasps.append(g.grasp_pose)
         except Exception as e:
-            print 'lalala'
             print e
     return fixed_grasps
 
 def calcNearGraspPose(pose):
-    # TODO steal the graspit pose
+    # TODO fix the near strategy
     near_pose = PoseStamped()
     near_pose.header = pose.header
     near_pose.pose.position.x = pose.pose.position.x
     near_pose.pose.position.y = pose.pose.position.y
-    near_pose.pose.position.z = pose.pose.position.z + 0.05
+    near_pose.pose.position.z = pose.pose.position.z + 0.1
     near_pose.pose.orientation = pose.pose.orientation
     return near_pose
 
-def calcNearPlacePose(pose):
-    # TODO
-    near_pose = pose
+def calcNearPlacePose(pose, grasp_pose):
+    # TODO fix the near strategy
+    # TODO fix the situation of an exception
+    # Currently, we are doomed
+    global tf_listener
+    near_pose = PoseStamped()
+    if pose.header.frame_id != "world":
+        try:
+            transform = TransformStamped()
+            transform.header.stamp = rospy.Time.now()
+            transform.header.frame_id = pose.header.frame_id
+            transform.child_frame_id = "ez_near_place_pose_calculator"
+            transform.transform.translation.x = pose.pose.position.x
+            transform.transform.translation.y = pose.pose.position.y
+            transform.transform.translation.z = pose.pose.position.z
+            transform.transform.rotation.x = pose.pose.orientation.x
+            transform.transform.rotation.y = pose.pose.orientation.y
+            transform.transform.rotation.z = pose.pose.orientation.z
+            transform.transform.rotation.w = pose.pose.orientation.w
+            tf_listener.setTransform(transform, "calcNearPlacePose")
+
+            trans, rot = tf_listener.lookupTransform("world", "ez_near_place_pose_calculator", rospy.Time(0))
+            near_pose.header.stamp = rospy.Time.now()
+            near_pose.header.frame_id = "world"
+            near_pose.pose.position.x = trans[0]
+            near_pose.pose.position.y = trans[1]
+            near_pose.pose.position.z = trans[2]
+        except Exception as e:
+            print e
+    else:
+        near_pose.header = pose.header
+        near_pose.pose.position.x = pose.pose.position.x
+        near_pose.pose.position.y = pose.pose.position.y
+        near_pose.pose.position.z = pose.pose.position.z + 0.1
+
+    near_pose.pose.orientation = pose.pose.orientation
+    print near_pose
     return near_pose
 
 def scene_setup(req):
