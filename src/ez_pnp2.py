@@ -390,7 +390,7 @@ def calcNearPlacePose(pose, grasp_pose):
         near_pose.pose.position.y = pose.pose.position.y
         near_pose.pose.position.z = pose.pose.position.z + 0.1
 
-    near_pose.pose.orientation = pose.pose.orientation
+    near_pose.pose.orientation = grasp_pose.pose.orientation
     print near_pose
     return near_pose
 
