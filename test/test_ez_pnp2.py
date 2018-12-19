@@ -63,7 +63,7 @@ def main():
 
     req.objects.append(object)
 
-    req.gripper_frame = "gripper_link"
+    req.gripper_frame = "pg70_base_link"
 
     response = scene_setup_srv(req)
 
