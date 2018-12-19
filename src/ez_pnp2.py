@@ -272,13 +272,13 @@ def fixItForGraspIt(obj, pose_factor):
 
     return p
 
-# TODO ensure that it is the y axis, just to be sure that the comment is accurate
-# GraspIt and MoveIt appear to have a 90 degree difference in the y (?) axis
+# GraspIt and MoveIt appear to have a 90 degree difference in the x axis (roll 90 degrees)
 def translateGraspIt2MoveIt(grasps, eef_link, object_name):
     global ez_objects, gripper_frame
     fixed_grasps = []
     for g in grasps:
         try:
+            # World -> Object
             transform = TransformStamped()
             transform.header.stamp = rospy.Time.now()
             transform.header.frame_id = "world"
@@ -292,6 +292,7 @@ def translateGraspIt2MoveIt(grasps, eef_link, object_name):
             transform.transform.rotation.w = ez_objects[object_name][1].pose.orientation.w
             tf_listener.setTransform(transform, "ez_helper")
 
+            # Object -> Gripper
             transform = TransformStamped()
             transform.header.stamp = rospy.Time.now()
             transform.header.frame_id = "target_object_frame"
@@ -305,30 +306,33 @@ def translateGraspIt2MoveIt(grasps, eef_link, object_name):
             transform.transform.rotation.w = g.grasp_pose.pose.orientation.w
             tf_listener.setTransform(transform, "ez_helper")
 
-            graspit_moveit_transform = TransformStamped()
-            graspit_moveit_transform.header.stamp = rospy.Time.now()
-            graspit_moveit_transform.header.frame_id = "ez_helper_graspit_pose"
-            graspit_moveit_transform.child_frame_id = "ez_helper_fixed_graspit_pose"
-            graspit_moveit_transform.transform.rotation.x = 0.5
-            graspit_moveit_transform.transform.rotation.y = 0.5
-            graspit_moveit_transform.transform.rotation.z = 0.5
-            graspit_moveit_transform.transform.rotation.w = 0.5
-            tf_listener.setTransform(graspit_moveit_transform, "ez_helper")
+            transform_frame_gripper_trans, transform_frame_gripper_rot = tf_listener.lookupTransform(eef_link, gripper_frame, rospy.Time(0))
 
-            transform_frame_gripper_trans, transform_frame_gripper_rot = tf_listener.lookupTransform(gripper_frame, eef_link, rospy.Time(0))
-
+            # Gripper -> End Effector
             transform = TransformStamped()
             transform.header.stamp = rospy.Time.now()
-            transform.header.frame_id = "ez_helper_fixed_graspit_pose"
-            transform.child_frame_id = "ez_helper_target_graspit_pose"
-            transform.transform.translation.x = transform_frame_gripper_trans[0]
-            transform.transform.translation.y = transform_frame_gripper_trans[1]
-            transform.transform.translation.z = transform_frame_gripper_trans[2]
+            transform.header.frame_id = "ez_helper_graspit_pose"
+            transform.child_frame_id = "ez_helper_fixed_graspit_pose"
+            transform.transform.translation.x = -transform_frame_gripper_trans[0]
+            transform.transform.translation.y = -transform_frame_gripper_trans[1]
+            transform.transform.translation.z = -transform_frame_gripper_trans[2]
             transform.transform.rotation.x = transform_frame_gripper_rot[0]
             transform.transform.rotation.y = transform_frame_gripper_rot[1]
             transform.transform.rotation.z = transform_frame_gripper_rot[2]
             transform.transform.rotation.w = transform_frame_gripper_rot[3]
             tf_listener.setTransform(transform, "ez_helper")
+
+            # Graspit to MoveIt translation
+            # (Gripper -> Gripper)
+            graspit_moveit_transform = TransformStamped()
+            graspit_moveit_transform.header.stamp = rospy.Time.now()
+            graspit_moveit_transform.header.frame_id = "ez_helper_fixed_graspit_pose"
+            graspit_moveit_transform.child_frame_id = "ez_helper_target_graspit_pose"
+            graspit_moveit_transform.transform.rotation.x = 0.7071
+            graspit_moveit_transform.transform.rotation.y = 0.0
+            graspit_moveit_transform.transform.rotation.z = 0.0
+            graspit_moveit_transform.transform.rotation.w = 0.7071
+            tf_listener.setTransform(graspit_moveit_transform, "ez_helper")
 
             target_trans, target_rot = tf_listener.lookupTransform("world", "ez_helper_target_graspit_pose", rospy.Time(0))
 
@@ -391,7 +395,6 @@ def calcNearPlacePose(pose, grasp_pose):
         near_pose.pose.position.z = pose.pose.position.z + 0.1
 
     near_pose.pose.orientation = grasp_pose.pose.orientation
-    print near_pose
     return near_pose
 
 def scene_setup(req):
