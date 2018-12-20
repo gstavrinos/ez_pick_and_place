@@ -109,6 +109,7 @@ def startPlanning(req):
                             time.sleep(2)
                             # TODO send grasp command
                             print "Holding the object!"
+                            # TODO attach object
                             time.sleep(5)
                             holding_object = True
                             continue
@@ -130,29 +131,29 @@ def startPlanning(req):
                 else:
                     # TODO do not get back to postgrasp position if you reset, or if you
                     # succeed once
-                    if away_from_grasp_pose or move(arm_move_group, near_grasp_pose):
+                    target_pose = calcTargetPose(req.target_place, near_grasp_pose)
+                    near_place_pose = calcNearPlacePose(target_pose)
+                    if not away_from_grasp_pose and move(arm_move_group, near_grasp_pose):
                         on_reset_pose = False
                         away_from_grasp_pose = True
                         print "Reached postgrasp pose!"
                         time.sleep(2)
-                        near_place_pose = calcNearPlacePose(req.target_place, near_grasp_pose)
-                        if move(arm_move_group, near_place_pose):
-                            print "Reached preplace pose!"
+                        continue
+                    elif away_from_grasp_pose and move(arm_move_group, near_place_pose):
+                        print "Reached preplace pose!"
+                        time.sleep(2)
+                        if move(arm_move_group, target_pose):
+                            print "Reached place pose!"
                             time.sleep(2)
-                            if move(arm_move_group, req.target_place):
-                                print "Reached place pose!"
-                                time.sleep(2)
-                                # TODO send ungrip command
-                                print "Placed the object!"
-                                time.sleep(5)
-                                holding_object = False
-                                # stop trying now, but also try as a last move to
-                                # reach the preplace pose again
-                                move(arm_move_group, near_place_pose)
-                                return True, "That was smoooooth :)"
-                        elif not on_reset_pose and reset(arm_move_group, req):
-                                on_reset_pose = True
-                                away_from_grasp_pose = True
+                            # TODO send ungrip command
+                            print "Placed the object!"
+                            # TODO detach object
+                            time.sleep(5)
+                            holding_object = False
+                            # stop trying now, but also try as a last move to
+                            # reach the preplace pose again
+                            move(arm_move_group, near_place_pose)
+                            return True, "That was smoooooth :)"
                     elif not on_reset_pose and reset(arm_move_group, req):
                             on_reset_pose = True
                             away_from_grasp_pose = True
@@ -359,18 +360,27 @@ def calcNearGraspPose(pose):
     near_pose.pose.orientation = pose.pose.orientation
     return near_pose
 
-def calcNearPlacePose(pose, grasp_pose):
+def calcNearPlacePose(target_pose):
     # TODO fix the near strategy
+    near_pose = PoseStamped()
+    near_pose.header = target_pose.header
+    near_pose.pose.position.x = target_pose.pose.position.x
+    near_pose.pose.position.y = target_pose.pose.position.y
+    near_pose.pose.position.z = target_pose.pose.position.z + 0.1
+    near_pose.pose.orientation = target_pose.pose.orientation
+    return near_pose
+
+def calcTargetPose(pose, grasp_pose):
     # TODO fix the situation of an exception
     # Currently, we are doomed
     global tf_listener
-    near_pose = PoseStamped()
+    target_pose = PoseStamped()
     if pose.header.frame_id != "world":
         try:
             transform = TransformStamped()
             transform.header.stamp = rospy.Time.now()
             transform.header.frame_id = pose.header.frame_id
-            transform.child_frame_id = "ez_near_place_pose_calculator"
+            transform.child_frame_id = "ez_target_pose_calculator"
             transform.transform.translation.x = pose.pose.position.x
             transform.transform.translation.y = pose.pose.position.y
             transform.transform.translation.z = pose.pose.position.z
@@ -378,24 +388,24 @@ def calcNearPlacePose(pose, grasp_pose):
             transform.transform.rotation.y = pose.pose.orientation.y
             transform.transform.rotation.z = pose.pose.orientation.z
             transform.transform.rotation.w = pose.pose.orientation.w
-            tf_listener.setTransform(transform, "calcNearPlacePose")
+            tf_listener.setTransform(transform, "calcTargetPose")
 
-            trans, rot = tf_listener.lookupTransform("world", "ez_near_place_pose_calculator", rospy.Time(0))
-            near_pose.header.stamp = rospy.Time.now()
-            near_pose.header.frame_id = "world"
-            near_pose.pose.position.x = trans[0]
-            near_pose.pose.position.y = trans[1]
-            near_pose.pose.position.z = trans[2]
+            trans, rot = tf_listener.lookupTransform("world", "ez_target_pose_calculator", rospy.Time(0))
+            target_pose.header.stamp = rospy.Time.now()
+            target_pose.header.frame_id = "world"
+            target_pose.pose.position.x = trans[0]
+            target_pose.pose.position.y = trans[1]
+            target_pose.pose.position.z = trans[2]
         except Exception as e:
             print e
     else:
-        near_pose.header = pose.header
-        near_pose.pose.position.x = pose.pose.position.x
-        near_pose.pose.position.y = pose.pose.position.y
-        near_pose.pose.position.z = pose.pose.position.z + 0.1
+        target_pose.header = pose.header
+        target_pose.pose.position.x = pose.pose.position.x
+        target_pose.pose.position.y = pose.pose.position.y
+        target_pose.pose.position.z = pose.pose.position.z
 
-    near_pose.pose.orientation = grasp_pose.pose.orientation
-    return near_pose
+    target_pose.pose.orientation = grasp_pose.pose.orientation
+    return target_pose
 
 def scene_setup(req):
     global add_model_srv, load_model_srv, planning_srv, tf_listener, moveit_scene
