@@ -55,6 +55,14 @@ def graspThis(object_name):
 
     return response.grasps
 
+def attachThis(object_name, arm_move_group, gripper_move_group_name):
+    global moveit_scene
+
+    robot_commander = moveit_commander.RobotCommander()
+    touch_links = robot_commander.get_link_names(gripper_move_group_name)
+
+    moveit_scene.attach_mesh(arm_move_group.get_end_effector_link(), name=object_name, pose=None, touch_links=touch_links)
+
 def nextGraspIndex(next_grasp_index, grasps):
     next_grasp_index += 1
     looped = False
@@ -70,9 +78,8 @@ def nextGraspIndex(next_grasp_index, grasps):
 # and since SCHUNK PG70 drivers suck,
 # create a wrapper of those messages to make the required
 # service calls to the PG70 drivers
-# TODO3? It seems to be a bug with timeout (?!)
 def startPlanning(req):
-    global keep_planning, gripper_frame
+    global keep_planning, gripper_frame, moveit_scene
 
     robot_commander = moveit_commander.RobotCommander()
 
@@ -109,7 +116,7 @@ def startPlanning(req):
                             time.sleep(2)
                             # TODO send grasp command
                             print "Holding the object!"
-                            # TODO attach object
+                            attachThis(req.graspit_target_object, arm_move_group, req.gripper_move_group)
                             time.sleep(5)
                             holding_object = True
                             continue
@@ -129,8 +136,6 @@ def startPlanning(req):
                             fixed_grasps = translateGraspIt2MoveIt(graspit_grasps, arm_move_group.get_end_effector_link(), req.graspit_target_object)
                             next_grasp_index = 0
                 else:
-                    # TODO do not get back to postgrasp position if you reset, or if you
-                    # succeed once
                     target_pose = calcTargetPose(req.target_place, near_grasp_pose)
                     near_place_pose = calcNearPlacePose(target_pose)
                     if not away_from_grasp_pose and move(arm_move_group, near_grasp_pose):
@@ -148,6 +153,7 @@ def startPlanning(req):
                             # TODO send ungrip command
                             print "Placed the object!"
                             # TODO detach object
+                            moveit_scene.remove_attached_object(arm_move_group.get_end_effector_link(), req.graspit_target_object)
                             time.sleep(5)
                             holding_object = False
                             # stop trying now, but also try as a last move to
@@ -405,6 +411,7 @@ def calcTargetPose(pose, grasp_pose):
         target_pose.pose.position.z = pose.pose.position.z
 
     target_pose.pose.orientation = grasp_pose.pose.orientation
+    target_pose.pose.position.z = grasp_pose.pose.position.z + 0.01
     return target_pose
 
 def scene_setup(req):
