@@ -10,12 +10,15 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
+  <depend>rospy</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>geometry_msgs</depend>
   <depend>message_runtime</depend>
+  <depend>moveit_commander</depend>
   <depend>manipulation_msgs</depend>
   <depend>message_generation</depend>
+  <depend>grasp_planning_graspit_msgs</depend>
   <depend>household_objects_database_msgs</depend>
 
   <export>
