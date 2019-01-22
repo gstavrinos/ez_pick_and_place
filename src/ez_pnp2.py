@@ -3,6 +3,7 @@ import tf
 import sys
 import time
 import rospy
+import random
 import moveit_commander
 
 from grasp_planning_graspit_msgs.srv import AddToDatabase, LoadDatabaseModel, AddToDatabaseRequest, LoadDatabaseModelRequest
@@ -12,6 +13,8 @@ from geometry_msgs.msg import TransformStamped, PoseStamped, Pose
 from manipulation_msgs.msg import GraspableObject
 from manipulation_msgs.srv import GraspPlanning
 from std_srvs.srv import Trigger
+
+import ezpnp_sim_annealing
 
 tf_listener = None
 moveit_scene = None
@@ -152,7 +155,6 @@ def startPlanning(req):
                             time.sleep(2)
                             # TODO send ungrip command
                             print "Placed the object!"
-                            # TODO detach object
                             moveit_scene.remove_attached_object(arm_move_group.get_end_effector_link(), req.graspit_target_object)
                             time.sleep(5)
                             holding_object = False
@@ -360,9 +362,9 @@ def calcNearGraspPose(pose):
     # TODO fix the near strategy
     near_pose = PoseStamped()
     near_pose.header = pose.header
-    near_pose.pose.position.x = pose.pose.position.x
-    near_pose.pose.position.y = pose.pose.position.y
-    near_pose.pose.position.z = pose.pose.position.z + 0.1
+    near_pose.pose.position.x = pose.pose.position.x + random.uniform(-0.05, 0.05)
+    near_pose.pose.position.y = pose.pose.position.y + random.uniform(-0.05, 0.05)
+    near_pose.pose.position.z = pose.pose.position.z + random.uniform(-0.05, 0.15)
     near_pose.pose.orientation = pose.pose.orientation
     return near_pose
 
@@ -370,9 +372,9 @@ def calcNearPlacePose(target_pose):
     # TODO fix the near strategy
     near_pose = PoseStamped()
     near_pose.header = target_pose.header
-    near_pose.pose.position.x = target_pose.pose.position.x
-    near_pose.pose.position.y = target_pose.pose.position.y
-    near_pose.pose.position.z = target_pose.pose.position.z + 0.1
+    near_pose.pose.position.x = target_pose.pose.position.x + random.uniform(-0.05, 0.05)
+    near_pose.pose.position.y = target_pose.pose.position.y + random.uniform(-0.05, 0.05)
+    near_pose.pose.position.z = target_pose.pose.position.z + random.uniform(-0.05, 0.15)
     near_pose.pose.orientation = target_pose.pose.orientation
     return near_pose
 
