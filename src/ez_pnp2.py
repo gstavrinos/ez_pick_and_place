@@ -14,7 +14,7 @@ from manipulation_msgs.msg import GraspableObject
 from manipulation_msgs.srv import GraspPlanning
 from std_srvs.srv import Trigger
 
-import ezpnp_sim_annealing
+from ezpnp_sim_annealing import EzPnP
 
 tf_listener = None
 moveit_scene = None
@@ -29,6 +29,9 @@ gripper_name = None
 gripper_frame = None
 
 keep_planning = True
+
+anneal = False
+fixed_grasps = []
 
 def stopPlanning(req):
     keep_planning = False
@@ -82,7 +85,7 @@ def nextGraspIndex(next_grasp_index, grasps):
 # create a wrapper of those messages to make the required
 # service calls to the PG70 drivers
 def startPlanning(req):
-    global keep_planning, gripper_frame, moveit_scene
+    global keep_planning, gripper_frame, moveit_scene, anneal, fixed_grasps
 
     robot_commander = moveit_commander.RobotCommander()
 
@@ -99,6 +102,7 @@ def startPlanning(req):
         holding_object = False
         graspit_grasps = graspThis(req.graspit_target_object)
         fixed_grasps = translateGraspIt2MoveIt(graspit_grasps, arm_move_group.get_end_effector_link(), req.graspit_target_object)
+        anneal = True
         next_grasp_index = 0
         near_grasp_pose = PoseStamped()
         near_place_pose = PoseStamped()
@@ -538,8 +542,12 @@ def scene_setup(req):
         ec.append(res.EXCEPTION)
         return False, info, ec
 
+# TODO
+def generateInitStates():
+    return []
+
 def main():
-    global add_model_srv, load_model_srv, planning_srv, tf_listener, moveit_scene
+    global add_model_srv, load_model_srv, planning_srv, tf_listener, moveit_scene, anneal
 
     moveit_commander.roscpp_initialize(sys.argv)
     rospy.init_node("ez_pnp")
@@ -558,6 +566,11 @@ def main():
     start_srv = rospy.Service("ez_pnp/start_planning", EzStartPlanning, startPlanning)
     stop_srv = rospy.Service("ez_pnp/stop_planning", Trigger, stopPlanning)
 
-    rospy.spin()
+    #rospy.spin()
+
+    # TODO
+    while not rospy.is_shutdown():
+        if anneal:
+            annealer = EzPnP([], fixed_grasps)
 
 main()
