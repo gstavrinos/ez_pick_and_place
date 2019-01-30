@@ -81,7 +81,7 @@ def main():
     doit.target_place = target_place
     doit.arm_move_group = "arm"
     doit.gripper_move_group = "gripper"
-    doit.secs_to_timeout = 120
+    doit.secs_to_timeout = 480
     # doit.allow_replanning = True
     doit.reset_position = "up"
 

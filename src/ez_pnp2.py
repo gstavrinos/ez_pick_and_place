@@ -41,7 +41,7 @@ def main():
     # TODO
     while not rospy.is_shutdown():
         if len(ez_tools.fixed_grasps) > 0:
-            #annealer = EzPnP([], ez_tools.fixed_grasps)
+            annealer = EzPnP([], ez_tools)
             continue
 
 main()
