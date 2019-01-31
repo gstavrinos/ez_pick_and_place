@@ -12,6 +12,8 @@ from manipulation_msgs.msg import GraspableObject
 from manipulation_msgs.srv import GraspPlanning
 from std_srvs.srv import Trigger
 
+from ez_state import EZState
+
 class EZToolSet():
 
     arm_move_group = None
@@ -31,7 +33,19 @@ class EZToolSet():
     gripper_name = None
     gripper_frame = None
 
-    fixed_grasps = []
+    place_poses = []
+    grasp_poses = []
+    neargrasp_poses = []
+    nearplace_poses = []
+
+    grasp_plans = dict()
+    place_plans = dict()
+    pregrasp_plans = dict()
+    preplace_plans = dict()
+    postgrasp_plans = dict()
+    postplace_plans = dict()
+
+    #ez_state = EZState()
 
     def stopPlanning(self, req):
         self.keep_planning = False
@@ -67,10 +81,82 @@ class EZToolSet():
     def nextGraspIndex(self, next_grasp_index):
         next_grasp_index += 1
         looped = False
-        if next_grasp_index >= len(self.fixed_grasps):
+        if next_grasp_index >= len(self.grasp_poses):
             next_grasp_index = 0
             looped = True
         return next_grasp_index, looped
+
+    def planFromTo(self, start_state, target_pose):
+        d = dict()
+        if start_state == 0:
+            self.arm_move_group.set_start_state_to_current_state()
+            for tp in target_pose:
+                self.arm_move_group.set_pose_target(tp)
+                d[tp] = self.arm_move_group.plan()
+        elif isinstance(start_state, basestring):
+            for ss in start_state:
+                target_dict = dict()
+                for tp in target_pose:
+                    # TODO
+                    # target_dict[tp] = 
+                    pass
+                # d[ss] = target_dict
+
+    def planCompletePnP(self, ez_state):
+        self.arm_move_group.set_pose_targets(ez_state.toPoseList())
+        # TODO divide the plan, attach object and continue planning
+        # instead of planning the whole thing without an object
+        return self.arm_move_group.plan()
+
+    def uberPlan(self):
+        # TODO create the EZStates somewhere else, so we can store them
+        db = dict()
+        for preg in self.neargrasp_poses:
+            for g in self.grasp_poses:
+                for postg in self.neargrasp_poses:
+                    for prep in self.nearplace_poses:
+                        for p in self.place_poses:
+                            for postp in self.nearplace_poses:
+                                cur_state = EZState(preg, g, postg, prep, p, postp)
+                                db[cur_state] = self.planCompletePnP(cur_state)
+        return db
+
+    def startPlanningCallback(self, req):
+        # Initialize moveit stuff
+        self.robot_commander = moveit_commander.RobotCommander()
+        self.arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
+        # Call graspit
+        graspit_grasps = self.graspThis(req.graspit_target_object)
+        # Generate grasp poses
+        self.translateGraspIt2MoveIt(graspit_grasps, req.graspit_target_object)
+        # Generate near grasp poses
+        self.neargrasp_poses = self.generateNearPoses(self.grasp_poses)
+        # Generate place poses
+        self.place_poses = self.calcTargetPoses(self.neargrasp_poses, req.target_place,)
+        # Generate near place poses
+        self.nearplace_poses = self.generateNearPoses(self.place_poses)
+
+        # Generate a plan for every combination :)
+        state_database = self.uberPlan()
+
+        print state_database
+
+
+
+        # # Generate plans for current to near grasp poses
+        # self.pregrasp_plans = planFromTo(0, nearplace_poses)
+        # # Generate plans for near grasp poses to grasp poses
+        # self.grasp_plans = planFromTo()
+        # # Generate plans for grasp poses to near grasp poses
+        # self.postgrasp_plans = planFromTo()
+        # # Generate plans for near grasp poses to near place poses
+        # self.preplace_plans = planFromTo()
+        # # Generate plans for near place poses to place pose
+        # self.place_plans = planFromTo()
+        # # Generate plans for place pose to near place poses
+        # self.postplace_plans = planFromTo()
+
+
 
     # TODO use set_start_state of the move group
     # so that we can plan the whole thing without 
@@ -103,13 +189,13 @@ class EZToolSet():
                     remaining_secs -= time.clock() - t0
                 try:
                     if not holding_object:
-                        near_grasp_pose = self.calcNearGraspPose(self.fixed_grasps[next_grasp_index])
+                        near_grasp_pose = self.calcNearGraspPose(self.grasp_poses[next_grasp_index])
                         # Did we successfully move to the pre-grasping position?
                         if self.move(near_grasp_pose):
                             on_reset_pose = False
                             print "Reached pregrasp pose!"
                             time.sleep(2)
-                            if self.move(self.fixed_grasps[next_grasp_index]):
+                            if self.move(self.grasp_poses[next_grasp_index]):
                                 away_from_grasp_pose = False
                                 print "Reached grasp pose!"
                                 time.sleep(2)
@@ -278,7 +364,7 @@ class EZToolSet():
 
     # GraspIt and MoveIt appear to have a 90 degree difference in the x axis (roll 90 degrees)
     def translateGraspIt2MoveIt(self, grasps, object_name):
-        self.fixed_grasps = []
+        self.grasp_poses = []
         for g in grasps:
             try:
                 # World -> Object
@@ -347,7 +433,7 @@ class EZToolSet():
                 g.grasp_pose.pose.orientation.y = target_rot[1]
                 g.grasp_pose.pose.orientation.z = target_rot[2]
                 g.grasp_pose.pose.orientation.w = target_rot[3]
-                self.fixed_grasps.append(g.grasp_pose)
+                self.grasp_poses.append(g.grasp_pose)
             except Exception as e:
                 print e
 
@@ -407,6 +493,46 @@ class EZToolSet():
         target_pose.pose.orientation = grasp_pose.pose.orientation
         target_pose.pose.position.z = grasp_pose.pose.position.z + 0.01
         return target_pose
+
+    def calcTargetPoses(self, poses, grasp_pose):
+        # TODO fix the situation of an exception
+        # Currently, we are doomed
+        target_poses = []
+        for pose in poses:
+            target_pose = PoseStamped()
+            if pose.header.frame_id != "world":
+                try:
+                    transform = TransformStamped()
+                    transform.header.stamp = rospy.Time.now()
+                    transform.header.frame_id = pose.header.frame_id
+                    transform.child_frame_id = "ez_target_pose_calculator"
+                    transform.transform.translation.x = pose.pose.position.x
+                    transform.transform.translation.y = pose.pose.position.y
+                    transform.transform.translation.z = pose.pose.position.z
+                    transform.transform.rotation.x = pose.pose.orientation.x
+                    transform.transform.rotation.y = pose.pose.orientation.y
+                    transform.transform.rotation.z = pose.pose.orientation.z
+                    transform.transform.rotation.w = pose.pose.orientation.w
+                    self.tf_listener.setTransform(transform, "calcTargetPose")
+
+                    trans, rot = self.tf_listener.lookupTransform("world", "ez_target_pose_calculator", rospy.Time(0))
+                    target_pose.header.stamp = rospy.Time.now()
+                    target_pose.header.frame_id = "world"
+                    target_pose.pose.position.x = trans[0]
+                    target_pose.pose.position.y = trans[1]
+                    target_pose.pose.position.z = trans[2]
+                except Exception as e:
+                    print e
+            else:
+                target_pose.header = pose.header
+                target_pose.pose.position.x = pose.pose.position.x
+                target_pose.pose.position.y = pose.pose.position.y
+                target_pose.pose.position.z = pose.pose.position.z
+
+            target_pose.pose.orientation = grasp_pose.pose.orientation
+            target_pose.pose.position.z = grasp_pose.pose.position.z + 0.01
+            target_poses.append(target_pose)
+        return target_poses
 
     def scene_setup(self, req):
         valid, info, ec = self.validSceneSetupInput(req)
@@ -527,12 +653,12 @@ class EZToolSet():
             ec.append(res.EXCEPTION)
             return False, info, ec
 
-    def generateNearPoses(self, grasps, n):
+    def generateNearPoses(self, grasps):
         poses = []
         for g in grasps:
-            p = calcNearGraspPose(g)
+            p = self.calcNearGraspPose(g)
             while p in poses:
-                p = calcNearGraspPose(g)
+                p = self.calcNearGraspPose(g)
             poses.append(p)
         return poses
 

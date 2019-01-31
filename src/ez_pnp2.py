@@ -33,14 +33,14 @@ def main():
     rospy.wait_for_service("/graspit_eg_planning")
 
     scene_srv = rospy.Service("ez_pnp/scene_setup", EzSceneSetup, ez_tools.scene_setup)
-    start_srv = rospy.Service("ez_pnp/start_planning", EzStartPlanning, ez_tools.startPlanning)
+    start_srv = rospy.Service("ez_pnp/start_planning", EzStartPlanning, ez_tools.startPlanningCallback)
     stop_srv = rospy.Service("ez_pnp/stop_planning", Trigger, ez_tools.stopPlanning)
 
     #rospy.spin()
 
     # TODO
     while not rospy.is_shutdown():
-        if len(ez_tools.fixed_grasps) > 0:
+        if len(ez_tools.grasp_poses) > 0:
             annealer = EzPnP([], ez_tools)
             continue
 
