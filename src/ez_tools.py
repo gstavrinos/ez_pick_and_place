@@ -12,6 +12,11 @@ from manipulation_msgs.msg import GraspableObject
 from manipulation_msgs.srv import GraspPlanning
 from std_srvs.srv import Trigger
 
+# TODO check eef points with the service below
+# and if it is successful, migrate everything to C++
+# to avoid service calls
+from moveit_msgs.srv import GetPositionIK
+
 from ez_state import EZState
 
 class EZToolSet():
@@ -111,6 +116,9 @@ class EZToolSet():
     def uberPlan(self):
         # TODO create the EZStates somewhere else, so we can store them
         db = dict()
+        # TODO These for loops are enormous
+        # I need to estimate the better solutions first (impossible?)
+        # or tone down the number of grasp poses
         for preg in self.neargrasp_poses:
             for g in self.grasp_poses:
                 for postg in self.neargrasp_poses:
