@@ -7,6 +7,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   std_srvs
+  moveit_msgs
   geometry_msgs
   moveit_commander
   manipulation_msgs
