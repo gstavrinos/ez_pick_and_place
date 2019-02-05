@@ -4,12 +4,13 @@ import rospy
 import random
 import moveit_commander
 
-from grasp_planning_graspit_msgs.srv import AddToDatabase, LoadDatabaseModel, AddToDatabaseRequest, LoadDatabaseModelRequest
-from ez_pick_and_place.srv import EzSceneSetup, EzSceneSetupResponse, EzStartPlanning
+from grasp_planning_graspit_msgs.srv import AddToDatabaseRequest, LoadDatabaseModelRequest
+from ez_pick_and_place.srv import EzSceneSetupResponse, EzStartPlanning
 from household_objects_database_msgs.msg import DatabaseModelPose
 from geometry_msgs.msg import TransformStamped, PoseStamped, Pose
 from manipulation_msgs.msg import GraspableObject
 from manipulation_msgs.srv import GraspPlanning
+from moveit_msgs.srv import GetPositionIKRequest
 from std_srvs.srv import Trigger
 
 # TODO check eef points with the service below
@@ -23,6 +24,7 @@ class EZToolSet():
 
     arm_move_group = None
     robot_commander = None
+    arm_move_group_name = ""
 
     tf_listener = None
     moveit_scene = None
@@ -49,6 +51,8 @@ class EZToolSet():
     preplace_plans = dict()
     postgrasp_plans = dict()
     postplace_plans = dict()
+
+    compute_ik_srv = None
 
     #ez_state = EZState()
 
@@ -119,20 +123,100 @@ class EZToolSet():
         # TODO These for loops are enormous
         # I need to estimate the better solutions first (impossible?)
         # or tone down the number of grasp poses
-        for preg in self.neargrasp_poses:
-            for g in self.grasp_poses:
-                for postg in self.neargrasp_poses:
-                    for prep in self.nearplace_poses:
-                        for p in self.place_poses:
-                            for postp in self.nearplace_poses:
-                                cur_state = EZState(preg, g, postg, prep, p, postp)
-                                db[cur_state] = self.planCompletePnP(cur_state)
+
+        print "Starting now!"
+
+        valid_preg = self.discard(self.neargrasp_poses)
+        valid_g = self.discard(self.grasp_poses)
+        # TODO
+        # The 3 lines below need to have the object attached
+        valid_postg = self.discard(self.neargrasp_poses)
+        valid_prep = self.discard(self.nearplace_poses)
+        valid_p = self.discard(self.place_poses)
+        # TODO
+        # the postp needs to have the object placed for collision avoidance
+        valid_postp = self.discard(self.nearplace_poses)
+
+        print "valid_preg"
+        print len(valid_preg)
+        print "valid_g"
+        print len(valid_g)
+        print "valid_postg"
+        print len(valid_postg)
+        print "valid_prep"
+        print len(valid_prep)
+        print "valid_p"
+        print len(valid_p)
+        print "valid_postp"
+        print len(valid_postp)
+
+
+        print len(self.place_poses)
+        # for g in self.grasp_poses:
+        #     req.ik_request.group_name = self.arm_move_group_name
+        #     req.ik_request.robot_state = k.solution#self.robot_commander.get_current_state()
+        #     req.ik_request.avoid_collisions = True
+        #     req.ik_request.pose_stamped = g
+        #     print "------------------------"
+        #     n = self.compute_ik_srv(req)
+        #     print n
+        #     if n.error_code.val == 1:
+        #         found += 1
+        #     total += 1
+        #     print "------------------------"
+        #     #for postg in self.neargrasp_poses:
+        #     if n.error_code.val == 1:
+        #         for prep in self.nearplace_poses:
+        #             req.ik_request.group_name = self.arm_move_group_name
+        #             req.ik_request.robot_state = n.solution#self.robot_commander.get_current_state()
+        #             req.ik_request.avoid_collisions = True
+        #             req.ik_request.pose_stamped = prep
+        #             print "------------------------"
+        #             l = self.compute_ik_srv(req)
+        #             print l
+        #             if l.error_code.val == 1:
+        #                 found += 1
+        #             total += 1
+        #             print "------------------------"
+        #             if l.error_code.val == 1:
+        #                 for p in self.place_poses:
+        #                     req.ik_request.group_name = self.arm_move_group_name
+        #                     req.ik_request.robot_state = l.solution#self.robot_commander.get_current_state()
+        #                     req.ik_request.avoid_collisions = True
+        #                     req.ik_request.pose_stamped = p
+        #                     print "------------------------"
+        #                     m = self.compute_ik_srv(req)
+        #                     print m
+        #                     if m.error_code.val == 1:
+        #                         found += 1
+        #                     total += 1
+        #                     print "------------------------"
+        #                 #for postp in self.nearplace_poses:
+                                  #cur_state = EZState(preg, g, postg, prep, p, postp)
+                                  #db[cur_state] = self.planCompletePnP(cur_state)
+
         return db
+
+    def discard(self, poses):
+        validp = []
+        req = GetPositionIKRequest()
+        req.ik_request.group_name = self.arm_move_group_name
+        req.ik_request.robot_state = self.robot_commander.get_current_state()
+        req.ik_request.avoid_collisions = True
+        for p in poses:
+            req.ik_request.pose_stamped = p
+            k = self.compute_ik_srv(req)
+            #print k
+            if k.error_code.val == 1:
+                validp.append(k.solution)
+        print validp
+        return validp
 
     def startPlanningCallback(self, req):
         # Initialize moveit stuff
         self.robot_commander = moveit_commander.RobotCommander()
         self.arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
+        self.arm_move_group_name = req.arm_move_group
         # Call graspit
         graspit_grasps = self.graspThis(req.graspit_target_object)
         # Generate grasp poses
@@ -140,7 +224,7 @@ class EZToolSet():
         # Generate near grasp poses
         self.neargrasp_poses = self.generateNearPoses(self.grasp_poses)
         # Generate place poses
-        self.place_poses = self.calcTargetPoses(self.neargrasp_poses, req.target_place,)
+        self.place_poses = self.calcTargetPoses(self.neargrasp_poses, req.target_place)
         # Generate near place poses
         self.nearplace_poses = self.generateNearPoses(self.place_poses)
 
@@ -502,41 +586,42 @@ class EZToolSet():
         target_pose.pose.position.z = grasp_pose.pose.position.z + 0.01
         return target_pose
 
-    def calcTargetPoses(self, poses, grasp_pose):
+    def calcTargetPoses(self, grasp_poses, pose):
         # TODO fix the situation of an exception
         # Currently, we are doomed
         target_poses = []
-        for pose in poses:
-            target_pose = PoseStamped()
-            if pose.header.frame_id != "world":
-                try:
-                    transform = TransformStamped()
-                    transform.header.stamp = rospy.Time.now()
-                    transform.header.frame_id = pose.header.frame_id
-                    transform.child_frame_id = "ez_target_pose_calculator"
-                    transform.transform.translation.x = pose.pose.position.x
-                    transform.transform.translation.y = pose.pose.position.y
-                    transform.transform.translation.z = pose.pose.position.z
-                    transform.transform.rotation.x = pose.pose.orientation.x
-                    transform.transform.rotation.y = pose.pose.orientation.y
-                    transform.transform.rotation.z = pose.pose.orientation.z
-                    transform.transform.rotation.w = pose.pose.orientation.w
-                    self.tf_listener.setTransform(transform, "calcTargetPose")
+        target_pose = PoseStamped()
+        if pose.header.frame_id != "world":
+            try:
+                transform = TransformStamped()
+                transform.header.stamp = rospy.Time.now()
+                transform.header.frame_id = pose.header.frame_id
+                transform.child_frame_id = "ez_target_pose_calculator"
+                transform.transform.translation.x = pose.pose.position.x
+                transform.transform.translation.y = pose.pose.position.y
+                transform.transform.translation.z = pose.pose.position.z
+                transform.transform.rotation.x = pose.pose.orientation.x
+                transform.transform.rotation.y = pose.pose.orientation.y
+                transform.transform.rotation.z = pose.pose.orientation.z
+                transform.transform.rotation.w = pose.pose.orientation.w
+                self.tf_listener.setTransform(transform, "calcTargetPose")
 
-                    trans, rot = self.tf_listener.lookupTransform("world", "ez_target_pose_calculator", rospy.Time(0))
-                    target_pose.header.stamp = rospy.Time.now()
-                    target_pose.header.frame_id = "world"
-                    target_pose.pose.position.x = trans[0]
-                    target_pose.pose.position.y = trans[1]
-                    target_pose.pose.position.z = trans[2]
-                except Exception as e:
-                    print e
-            else:
-                target_pose.header = pose.header
-                target_pose.pose.position.x = pose.pose.position.x
-                target_pose.pose.position.y = pose.pose.position.y
-                target_pose.pose.position.z = pose.pose.position.z
+                trans, rot = self.tf_listener.lookupTransform("world", "ez_target_pose_calculator", rospy.Time(0))
+                target_pose.header.stamp = rospy.Time.now()
+                target_pose.header.frame_id = "world"
+                target_pose.pose.position.x = trans[0]
+                target_pose.pose.position.y = trans[1]
+                target_pose.pose.position.z = trans[2]
+            except Exception as e:
+                print e
+        else:
+            target_pose.header = pose.header
+            target_pose.pose.position.x = pose.pose.position.x
+            target_pose.pose.position.y = pose.pose.position.y
+            target_pose.pose.position.z = pose.pose.position.z
 
+
+        for grasp_pose in grasp_poses:
             target_pose.pose.orientation = grasp_pose.pose.orientation
             target_pose.pose.position.z = grasp_pose.pose.position.z + 0.01
             target_poses.append(target_pose)
