@@ -22,9 +22,11 @@ from ez_state import EZState
 
 class EZToolSet():
 
+    object_to_grasp = ""
     arm_move_group = None
     robot_commander = None
     arm_move_group_name = ""
+    gripper_move_group_name = ""
 
     tf_listener = None
     moveit_scene = None
@@ -82,7 +84,7 @@ class EZToolSet():
 
         return response.grasps
 
-    def attachThis(self, object_name, gripper_move_group_name):
+    def attachThis(self, object_name):
         touch_links = self.robot_commander.get_link_names(gripper_move_group_name)
 
         self.moveit_scene.attach_mesh(self.arm_move_group.get_end_effector_link(), name=object_name, pose=None, touch_links=touch_links)
@@ -152,6 +154,33 @@ class EZToolSet():
 
 
         print len(self.place_poses)
+
+        for vpreg in valid_preg:
+            for vg in valid_g:
+                self.arm_move_group.set_pose_targets([vpreg.pose, vg.pose])
+                p = self.arm_move_group.plan()
+
+                print "@@@"
+                if len(p.joint_trajectory.points) > 0:
+                    self.arm_move_group.set_start_state(p.joint_trajectory.points[-1])
+                    self.arm_move_group.attachThis(self.object_to_grasp)
+                    for vpostg in valid_postg:
+                        for vprep in valid_prep:
+                            self.arm_move_group.set_pose_targets([vpostg.pose, vprep.pose])
+                            p = self.arm_move_group.plan()
+                            print len(p.joint_trajectory.points)
+
+                #print len(p.joint_trajectory.points)
+
+                print "@@@"
+        '''
+                #for vpostg in valid_postg:
+                    # for vprep in valid_prep:
+                    #     for vp in valid_p:
+                    #         for vpostp in valid_postp:
+        '''
+
+
         # for g in self.grasp_poses:
         #     req.ik_request.group_name = self.arm_move_group_name
         #     req.ik_request.robot_state = k.solution#self.robot_commander.get_current_state()
@@ -208,8 +237,7 @@ class EZToolSet():
             k = self.compute_ik_srv(req)
             #print k
             if k.error_code.val == 1:
-                validp.append(k.solution)
-        print validp
+                validp.append(p)
         return validp
 
     def startPlanningCallback(self, req):
@@ -217,6 +245,8 @@ class EZToolSet():
         self.robot_commander = moveit_commander.RobotCommander()
         self.arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
         self.arm_move_group_name = req.arm_move_group
+        self.object_to_grasp = req.graspit_target_object
+        self.gripper_move_group_name = req.gripper_move_group
         # Call graspit
         graspit_grasps = self.graspThis(req.graspit_target_object)
         # Generate grasp poses
@@ -293,7 +323,7 @@ class EZToolSet():
                                 time.sleep(2)
                                 # TODO send grasp command
                                 print "Holding the object!"
-                                self.attachThis(req.graspit_target_object, req.gripper_move_group)
+                                self.attachThis(req.graspit_target_object)
                                 time.sleep(5)
                                 holding_object = True
                                 continue
