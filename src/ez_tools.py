@@ -84,10 +84,17 @@ class EZToolSet():
 
         return response.grasps
 
-    def attachThis(self, object_name):
-        touch_links = self.robot_commander.get_link_names(gripper_move_group_name)
+    # def attachThis(self, object_name):
+    #     touch_links = self.robot_commander.get_link_names(self.gripper_move_group_name)
 
-        self.moveit_scene.attach_mesh(self.arm_move_group.get_end_effector_link(), name=object_name, pose=None, touch_links=touch_links)
+    def attachThis(self, object_name):
+        touch_links = self.robot_commander.get_link_names(self.gripper_move_group_name)
+        self.arm_move_group.attach_object(object_name, link_name=self.arm_move_group.get_end_effector_link(), touch_links=touch_links)
+
+        # self.moveit_scene.attach_mesh(self.arm_move_group.get_end_effector_link(), name=object_name, pose=None, touch_links=touch_links)
+
+    def detachThis(self, object_name):
+        self.arm_move_group.detach_object(object_name)
 
     def nextGraspIndex(self, next_grasp_index):
         next_grasp_index += 1
@@ -152,27 +159,36 @@ class EZToolSet():
         print "valid_postp"
         print len(valid_postp)
 
-
         print len(self.place_poses)
 
-        for vpreg in valid_preg:
-            for vg in valid_g:
-                self.arm_move_group.set_pose_targets([vpreg.pose, vg.pose])
-                p = self.arm_move_group.plan()
+        plan1 = None
+        plan2 = None
+        critical_point = None
 
-                print "@@@"
-                if len(p.joint_trajectory.points) > 0:
-                    self.arm_move_group.set_start_state(p.joint_trajectory.points[-1])
-                    self.arm_move_group.attachThis(self.object_to_grasp)
-                    for vpostg in valid_postg:
-                        for vprep in valid_prep:
-                            self.arm_move_group.set_pose_targets([vpostg.pose, vprep.pose])
-                            p = self.arm_move_group.plan()
-                            print len(p.joint_trajectory.points)
+        for i in xrange(len(valid_preg[0])):
+            for j in xrange(len(valid_g[0])):
+                self.arm_move_group.set_start_state_to_current_state()
+                self.arm_move_group.set_pose_targets([valid_preg[0][i].pose, valid_g[0][j].pose])
+                plan1 = self.arm_move_group.plan()
+                if len(plan1.joint_trajectory.points) > 0:
+                    self.arm_move_group.set_start_state(valid_g[1][j])
+                    self.attachThis(self.object_to_grasp)
+                    for k in xrange(len(valid_postg[0])):
+                        for l in xrange(len(valid_prep[0])):
+                            for m in xrange(len(valid_p[0])):
+                                self.arm_move_group.set_pose_targets([valid_postg[0][k].pose, valid_prep[0][l].pose, valid_p[0][m].pose])
+                                plan2 = self.arm_move_group.plan()
+                                print len(plan2.joint_trajectory.points)
+                                if len(plan2.joint_trajectory.points) > 0:
+                                    #for n in xrange(len(valid_p[0])):
+                                    self.detachThis(self.object_to_grasp)
+                                    critical_point = valid_g[0][j]
+                                    print 'COMPLETE PLAN!!'
+                                    return plan1, plan2, critical_point
+                    self.detachThis(self.object_to_grasp)
+        return None, None, None
 
-                #print len(p.joint_trajectory.points)
 
-                print "@@@"
         '''
                 #for vpostg in valid_postg:
                     # for vprep in valid_prep:
@@ -224,10 +240,9 @@ class EZToolSet():
                                   #cur_state = EZState(preg, g, postg, prep, p, postp)
                                   #db[cur_state] = self.planCompletePnP(cur_state)
 
-        return db
-
     def discard(self, poses):
         validp = []
+        validrs = []
         req = GetPositionIKRequest()
         req.ik_request.group_name = self.arm_move_group_name
         req.ik_request.robot_state = self.robot_commander.get_current_state()
@@ -235,10 +250,10 @@ class EZToolSet():
         for p in poses:
             req.ik_request.pose_stamped = p
             k = self.compute_ik_srv(req)
-            #print k
             if k.error_code.val == 1:
                 validp.append(p)
-        return validp
+                validrs.append(k.solution)
+        return [validp, validrs]
 
     def startPlanningCallback(self, req):
         # Initialize moveit stuff
@@ -259,10 +274,24 @@ class EZToolSet():
         self.nearplace_poses = self.generateNearPoses(self.place_poses)
 
         # Generate a plan for every combination :)
-        state_database = self.uberPlan()
+        plan1, plan2, critical_point = self.uberPlan()
 
-        print state_database
-
+        if plan1 and plan2:
+            step1 = self.arm_move_group.execute(plan1)
+            self.attachThis(self.object_to_grasp)
+            print "BEFORE"
+            time.sleep(2)
+            print "AFTER"
+            # TODO check here for start state deviation
+            self.move(critical_point)
+            step2 = self.arm_move_group.execute(plan2)
+            self.detachThis(self.object_to_grasp)
+            if step1 and step2:
+                return True, ""
+            else:
+                return False, "A plan was found but failed during execution..."
+        else:
+            return False, "No valid plan was found..."
 
 
         # # Generate plans for current to near grasp poses
