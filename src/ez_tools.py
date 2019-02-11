@@ -71,6 +71,10 @@ class EZToolSet():
         self.arm_move_group.set_pose_target(pose)
         return self.arm_move_group.go()
 
+    def moveToState(self, state):
+        self.arm_move_group.set_joint_value_target(state)
+        return self.arm_move_group.go()
+
     def graspThis(self, object_name):
         dbmp = DatabaseModelPose()
         dbmp.model_id = self.ez_objects[object_name][0]
@@ -129,9 +133,6 @@ class EZToolSet():
     def uberPlan(self):
         # TODO create the EZStates somewhere else, so we can store them
         db = dict()
-        # TODO These for loops are enormous
-        # I need to estimate the better solutions first (impossible?)
-        # or tone down the number of grasp poses
 
         print "Starting now!"
 
@@ -163,7 +164,6 @@ class EZToolSet():
 
         plan1 = None
         plan2 = None
-        critical_point = None
 
         for i in xrange(len(valid_preg[0])):
             for j in xrange(len(valid_g[0])):
@@ -171,7 +171,8 @@ class EZToolSet():
                 self.arm_move_group.set_pose_targets([valid_preg[0][i].pose, valid_g[0][j].pose])
                 plan1 = self.arm_move_group.plan()
                 if len(plan1.joint_trajectory.points) > 0:
-                    self.arm_move_group.set_start_state(valid_g[1][j])
+                    critical_state = valid_g[1][j]
+                    self.arm_move_group.set_start_state(critical_state)
                     self.attachThis(self.object_to_grasp)
                     for k in xrange(len(valid_postg[0])):
                         for l in xrange(len(valid_prep[0])):
@@ -182,9 +183,8 @@ class EZToolSet():
                                 if len(plan2.joint_trajectory.points) > 0:
                                     #for n in xrange(len(valid_p[0])):
                                     self.detachThis(self.object_to_grasp)
-                                    critical_point = valid_g[0][j]
                                     print 'COMPLETE PLAN!!'
-                                    return plan1, plan2, critical_point
+                                    return plan1, plan2, critical_state
                     self.detachThis(self.object_to_grasp)
         return None, None, None
 
@@ -256,6 +256,7 @@ class EZToolSet():
         return [validp, validrs]
 
     def startPlanningCallback(self, req):
+        # TODO enable replanning
         # Initialize moveit stuff
         self.robot_commander = moveit_commander.RobotCommander()
         self.arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
@@ -269,25 +270,35 @@ class EZToolSet():
         # Generate near grasp poses
         self.neargrasp_poses = self.generateNearPoses(self.grasp_poses)
         # Generate place poses
-        self.place_poses = self.calcTargetPoses(self.neargrasp_poses, req.target_place)
+        self.place_poses = self.calcTargetPoses(self.grasp_poses, req.target_place)
         # Generate near place poses
         self.nearplace_poses = self.generateNearPoses(self.place_poses)
 
         # Generate a plan for every combination :)
-        plan1, plan2, critical_point = self.uberPlan()
+        plan1, plan2, critical_state = self.uberPlan()
 
+        print plan1
+        print "###############################"
+        print plan2
+        print self.place_poses
         if plan1 and plan2:
+            print "BEFORE1"
             step1 = self.arm_move_group.execute(plan1)
             self.attachThis(self.object_to_grasp)
-            print "BEFORE"
             time.sleep(2)
-            print "AFTER"
+            print "AFTER1"
+            print "BEFORE2"
             # TODO check here for start state deviation
-            self.move(critical_point)
+            self.moveToState(critical_state)
+            time.sleep(2)
+            print "AFTER2"
+            print "BEFORE3"
             step2 = self.arm_move_group.execute(plan2)
+            time.sleep(2)
             self.detachThis(self.object_to_grasp)
+            print "AFTER3"
             if step1 and step2:
-                return True, ""
+                return True, "EZ"
             else:
                 return False, "A plan was found but failed during execution..."
         else:
@@ -681,9 +692,13 @@ class EZToolSet():
 
 
         for grasp_pose in grasp_poses:
-            target_pose.pose.orientation = grasp_pose.pose.orientation
-            target_pose.pose.position.z = grasp_pose.pose.position.z + 0.01
-            target_poses.append(target_pose)
+            target_pose_ = PoseStamped()
+            target_pose_.header = grasp_pose.header
+            target_pose_.pose.position.x = target_pose.pose.position.x
+            target_pose_.pose.position.y = target_pose.pose.position.y
+            target_pose_.pose.position.z = grasp_pose.pose.position.z + 0.01
+            target_pose_.pose.orientation = grasp_pose.pose.orientation
+            target_poses.append(target_pose_)
         return target_poses
 
     def scene_setup(self, req):
