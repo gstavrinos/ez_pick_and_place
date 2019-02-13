@@ -71,6 +71,10 @@ class EZToolSet():
         self.arm_move_group.set_pose_target(pose)
         return self.arm_move_group.go()
 
+    def moveMultiple(self, poses):
+        self.arm_move_group.set_pose_targets(poses)
+        return self.arm_move_group.go()
+
     def moveToState(self, state):
         self.arm_move_group.set_joint_value_target(state)
         return self.arm_move_group.go()
@@ -130,64 +134,112 @@ class EZToolSet():
         # instead of planning the whole thing without an object
         return self.arm_move_group.plan()
 
-    def uberPlan(self):
-        # TODO create the EZStates somewhere else, so we can store them
-        db = dict()
+    # def uberPlan(self):
+    #     # TODO create the EZStates somewhere else, so we can store them
+    #     db = dict()
 
+    #     print "Starting now!"
+
+    #     valid_preg = self.discard(self.neargrasp_poses)
+    #     valid_g = self.discard(self.grasp_poses)
+    #     # TODO
+    #     # The 3 lines below need to have the object attached
+    #     valid_postg = self.discard(self.neargrasp_poses)
+    #     valid_prep = self.discard(self.nearplace_poses)
+    #     valid_p = self.discard(self.place_poses)
+    #     # TODO
+    #     # the postp needs to have the object placed for collision avoidance
+    #     valid_postp = self.discard(self.nearplace_poses)
+
+    #     print "valid_preg"
+    #     print len(valid_preg)
+    #     print "valid_g"
+    #     print len(valid_g)
+    #     print "valid_postg"
+    #     print len(valid_postg)
+    #     print "valid_prep"
+    #     print len(valid_prep)
+    #     print "valid_p"
+    #     print len(valid_p)
+    #     print "valid_postp"
+    #     print len(valid_postp)
+
+    #     print len(self.place_poses)
+    #     #print self.place_poses[0]
+    #     #print self.grasp_poses[0]
+
+    #     plan1 = None
+    #     plan2 = None
+
+    #     for i in xrange(len(valid_preg[0])):
+    #         for j in xrange(len(valid_g[0])):
+    #             self.arm_move_group.set_start_state_to_current_state()
+    #             self.arm_move_group.set_pose_targets([valid_preg[0][i].pose, valid_g[0][j].pose])
+    #             plan1 = self.arm_move_group.plan()
+    #             if len(plan1.joint_trajectory.points) > 0:
+    #                 critical_state = valid_g[1][j]
+    #                 self.arm_move_group.set_start_state(critical_state)
+    #                 self.attachThis(self.object_to_grasp)
+    #                 for k in xrange(len(valid_postg[0])):
+    #                     for l in xrange(len(valid_prep[0])):
+    #                         for m in xrange(len(valid_p[0])):
+    #                             self.arm_move_group.set_pose_targets([valid_postg[0][k].pose, valid_prep[0][l].pose, valid_p[0][m].pose])
+    #                             plan2 = self.arm_move_group.plan()
+    #                             print len(plan2.joint_trajectory.points)
+    #                             if len(plan2.joint_trajectory.points) > 0:
+    #                                 #for n in xrange(len(valid_p[0])):
+    #                                 self.detachThis(self.object_to_grasp)
+    #                                 print 'COMPLETE PLAN!!'
+    #                                 return plan1, plan2, critical_state, [valid_preg[0][i].pose, valid_g[0][j].pose, valid_postg[0][k].pose, valid_prep[0][l].pose, valid_p[0][m].pose]
+    #                 self.detachThis(self.object_to_grasp)
+    #     return None, None, None
+
+    def uberPlan(self, target):
+        if self.pick():
+            return self.move(self.calcTargetPoseBasedOnCurrentState(target))
+        return False
+
+    def pick(self):
         print "Starting now!"
 
         valid_preg = self.discard(self.neargrasp_poses)
         valid_g = self.discard(self.grasp_poses)
-        # TODO
-        # The 3 lines below need to have the object attached
-        valid_postg = self.discard(self.neargrasp_poses)
-        valid_prep = self.discard(self.nearplace_poses)
-        valid_p = self.discard(self.place_poses)
-        # TODO
-        # the postp needs to have the object placed for collision avoidance
-        valid_postp = self.discard(self.nearplace_poses)
 
         print "valid_preg"
         print len(valid_preg)
         print "valid_g"
         print len(valid_g)
+
+        for i in xrange(len(valid_preg[0])):
+            for j in xrange(len(valid_g[0])):
+                self.arm_move_group.set_start_state_to_current_state()
+                plan1 = self.arm_move_group.plan()
+                if self.moveMultiple([valid_preg[0][i].pose, valid_g[0][j].pose]):
+                    self.attachThis(self.object_to_grasp)
+                    return True
+        return False
+
+    def place(self):
+        valid_postg = self.discard(self.neargrasp_poses)
+        valid_prep = self.discard(self.nearplace_poses)
+        valid_p = self.discard(self.place_poses)
+        #valid_postp = self.discard(self.nearplace_poses)
         print "valid_postg"
         print len(valid_postg)
         print "valid_prep"
         print len(valid_prep)
         print "valid_p"
         print len(valid_p)
-        print "valid_postp"
-        print len(valid_postp)
-
-        print len(self.place_poses)
-
-        plan1 = None
-        plan2 = None
-
-        for i in xrange(len(valid_preg[0])):
-            for j in xrange(len(valid_g[0])):
-                self.arm_move_group.set_start_state_to_current_state()
-                self.arm_move_group.set_pose_targets([valid_preg[0][i].pose, valid_g[0][j].pose])
-                plan1 = self.arm_move_group.plan()
-                if len(plan1.joint_trajectory.points) > 0:
-                    critical_state = valid_g[1][j]
-                    self.arm_move_group.set_start_state(critical_state)
-                    self.attachThis(self.object_to_grasp)
-                    for k in xrange(len(valid_postg[0])):
-                        for l in xrange(len(valid_prep[0])):
-                            for m in xrange(len(valid_p[0])):
-                                self.arm_move_group.set_pose_targets([valid_postg[0][k].pose, valid_prep[0][l].pose, valid_p[0][m].pose])
-                                plan2 = self.arm_move_group.plan()
-                                print len(plan2.joint_trajectory.points)
-                                if len(plan2.joint_trajectory.points) > 0:
-                                    #for n in xrange(len(valid_p[0])):
-                                    self.detachThis(self.object_to_grasp)
-                                    print 'COMPLETE PLAN!!'
-                                    return plan1, plan2, critical_state
-                    self.detachThis(self.object_to_grasp)
-        return None, None, None
-
+        #print "valid_postp"
+        #print len(valid_postp)
+        for k in xrange(len(valid_postg[0])):
+            for l in xrange(len(valid_prep[0])):
+                for m in xrange(len(valid_p[0])):
+                    if self.moveMultiple([valid_postg[0][k].pose, valid_prep[0][l].pose, valid_p[0][m].pose]):
+                        self.detachThis(self.object_to_grasp)
+                        print valid_p[0][m].pose
+                        return True
+        return False
 
         '''
                 #for vpostg in valid_postg:
@@ -275,34 +327,41 @@ class EZToolSet():
         self.nearplace_poses = self.generateNearPoses(self.place_poses)
 
         # Generate a plan for every combination :)
-        plan1, plan2, critical_state = self.uberPlan()
+        # plan1, plan2, critical_state, chosen_poses = self.uberPlan()
 
-        print plan1
-        print "###############################"
-        print plan2
-        print self.place_poses
-        if plan1 and plan2:
-            print "BEFORE1"
-            step1 = self.arm_move_group.execute(plan1)
-            self.attachThis(self.object_to_grasp)
-            time.sleep(2)
-            print "AFTER1"
-            print "BEFORE2"
-            # TODO check here for start state deviation
-            self.moveToState(critical_state)
-            time.sleep(2)
-            print "AFTER2"
-            print "BEFORE3"
-            step2 = self.arm_move_group.execute(plan2)
-            time.sleep(2)
-            self.detachThis(self.object_to_grasp)
-            print "AFTER3"
-            if step1 and step2:
-                return True, "EZ"
-            else:
-                return False, "A plan was found but failed during execution..."
-        else:
-            return False, "No valid plan was found..."
+        # #print plan1
+        # print "###############################"
+        # #print plan2
+        # #print self.place_poses
+        # if plan1 and plan2:
+        #     print "BEFORE1"
+        #     step1 = self.arm_move_group.execute(plan1)
+        #     self.attachThis(self.object_to_grasp)
+        #     time.sleep(2)
+        #     print "AFTER1"
+        #     print "BEFORE2"
+        #     # TODO check here for start state deviation
+        #     if not self.moveToState(critical_state):
+        #         print "lalala"
+        #         self.moveMultiple(chosen_poses[3:4])
+        #         self.move(chosen_poses[4])
+        #     time.sleep(2)
+        #     print "AFTER2"
+        #     print "BEFORE3"
+        #     step2 = self.arm_move_group.execute(plan2)
+        #     time.sleep(2)
+        #     self.detachThis(self.object_to_grasp)
+        #     print "AFTER3"
+        #     if step1 and step2:
+        #         return True, "EZ"
+        #     else:
+        #         return False, "A plan was found but failed during execution..."
+        # else:
+        #     return False, "No valid plan was found..."
+
+
+
+        return self.uberPlan(req.target_place), ""
 
 
         # # Generate plans for current to near grasp poses
@@ -693,13 +752,77 @@ class EZToolSet():
 
         for grasp_pose in grasp_poses:
             target_pose_ = PoseStamped()
-            target_pose_.header = grasp_pose.header
+            target_pose_.header = target_pose.header
             target_pose_.pose.position.x = target_pose.pose.position.x
             target_pose_.pose.position.y = target_pose.pose.position.y
             target_pose_.pose.position.z = grasp_pose.pose.position.z + 0.01
             target_pose_.pose.orientation = grasp_pose.pose.orientation
             target_poses.append(target_pose_)
         return target_poses
+
+    def calcTargetPoseBasedOnCurrentState(self, target):
+        # TODO Handle exception
+        try:
+            t = self.moveit_scene.get_object_poses([req.graspit_target_object])
+
+            target_pose = PoseStamped()
+
+            trans, rot = self.tf_listener.lookupTransform("world", self.arm_move_group.get_end_effector_link(), rospy.Time(0))
+
+            obj = TransformStamped()
+            obj.header.stamp = rospy.Time.now()
+            obj.header.frame_id = "world"
+            obj.header.child_frame_id = "ez_target_pick"
+            obj.transform.translation.x = t.position.x
+            obj.transform.translation.y = t.position.y
+            obj.transform.translation.z = t.position.z
+            obj.transform.rotation.x = t.orientation.x
+            obj.transform.rotation.y = t.orientation.y
+            obj.transform.rotation.z = t.orientation.z
+            obj.transform.rotation.w = t.orientation.w
+
+            trans1, rot1 = self.tf_listener.lookupTransform(self.arm_move_group.get_end_effector_link(), "ez_target_pick", rospy.Time(0))
+
+            target_trans = TransformStamped()
+            target_trans.header.stamp = rospy.Time.now()
+            target_trans.header.frame_id = target.header.frame_id
+            target_trans.child_frame_id = "ez_target_place"
+            target_trans.transform.translation.x = target.pose.position.x
+            target_trans.transform.translation.y = target.pose.position.y
+            target_trans.transform.translation.z = target.pose.position.z
+            target_trans.transform.rotation.x = target.pose.orientation.x
+            target_trans.transform.rotation.y = target.pose.orientation.y
+            target_trans.transform.rotation.z = target.pose.orientation.z
+            target_trans.transform.rotation.w = target.pose.orientation.w
+
+            ee_target_trans = TransformStamped()
+            ee_target_trans.header.stamp = rospy.Time.now()
+            ee_target_trans.header.frame_id = "ez_target_place"
+            ee_target_trans.child_frame_id = "ez_target_to_ee"
+            ee_target_trans.transform.translation.x = trans1[0]
+            ee_target_trans.transform.translation.y = trans1[1]
+            ee_target_trans.transform.translation.z = trans1[2]
+            ee_target_trans.transform.rotation.x = rot1[0]
+            ee_target_trans.transform.rotation.y = rot1[1]
+            ee_target_trans.transform.rotation.z = rot1[2]
+            ee_target_trans.transform.rotation.w = rot1[3]
+
+            self.tf_listener.setTransform(target_trans, "calcTargetPose")
+
+            trans2, rot2 = self.tf_listener.lookupTransform("world", "ez_target_to_ee", rospy.Time(0))
+            target_pose.header.stamp = rospy.Time.now()
+            target_pose.header.frame_id = "world"
+            target_pose.pose.position.x = trans2[0]
+            target_pose.pose.position.y = trans2[1]
+            target_pose.pose.position.z = trans[2] + 0.01
+            target_pose.pose.orientation.x = rot[0]
+            target_pose.pose.orientation.y = rot[1]
+            target_pose.pose.orientation.z = rot[2]
+            target_pose.pose.orientation.w = rot[3]
+            return target_pose
+        except Exception as e:
+            print e
+
 
     def scene_setup(self, req):
         valid, info, ec = self.validSceneSetupInput(req)
