@@ -2,6 +2,7 @@
 import tf
 import sys
 import rospy
+import tf2_ros
 import moveit_commander
 
 from grasp_planning_graspit_msgs.srv import AddToDatabase, LoadDatabaseModel
@@ -25,6 +26,8 @@ def main():
 
     ez_tools.tf_listener = tf.TransformListener()
     ez_tools.moveit_scene = moveit_commander.PlanningSceneInterface()
+    ez_tools.tf_buffer = tf2_ros.Buffer()
+    ez_tools.tf2_listener = tf2_ros.TransformListener(ez_tools.tf_buffer)
 
     ez_tools.add_model_srv = rospy.ServiceProxy("/graspit_add_to_database", AddToDatabase)
     rospy.wait_for_service("/graspit_add_to_database")
