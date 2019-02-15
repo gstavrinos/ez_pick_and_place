@@ -28,10 +28,9 @@ class EZToolSet():
     arm_move_group_name = ""
     gripper_move_group_name = ""
 
-    tf_buffer = None
+    tf2_buffer = None
     tf2_listener = None
 
-    tf_listener = None
     moveit_scene = None
     planning_srv = None
     add_model_srv = None
@@ -83,9 +82,7 @@ class EZToolSet():
         return self.arm_move_group.go()
 
     def lookup_tf(self, target_frame, source_frame):
-        #self.tf_listener.waitForTransform(target_frame, source_frame, rospy.Time(), rospy.Duration(4.0))
-        #return self.tf_listener.lookupTransform(target_frame, source_frame, rospy.Time(0))
-        return self.tf_buffer.lookup_transform(target_frame, source_frame, rospy.Time(0), rospy.Duration(10))
+        return self.tf2_buffer.lookup_transform(target_frame, source_frame, rospy.Time(), rospy.Duration(10))
 
     def graspThis(self, object_name):
         dbmp = DatabaseModelPose()
@@ -204,6 +201,7 @@ class EZToolSet():
 
     def uberPlan(self, target, target_object):
         if self.pick():
+            time.sleep(2)
             t = self.calcTargetPoseBasedOnCurrentState(target, target_object)
             self.attachThis(self.object_to_grasp)
             if self.move(t):
@@ -578,7 +576,7 @@ class EZToolSet():
                 transform.transform.rotation.y = obj.pose.pose.orientation.y
                 transform.transform.rotation.z = obj.pose.pose.orientation.z
                 transform.transform.rotation.w = obj.pose.pose.orientation.w
-                self.tf_listener.setTransform(transform, "fixItForGraspIt")
+                self.tf2_buffer.set_transform(transform, "fixItForGraspIt")
 
                 trans = self.lookup_tf("ez_fix_it_for_grasp_it", "world")
 
@@ -611,7 +609,7 @@ class EZToolSet():
                 transform.transform.rotation.y = self.ez_objects[object_name][1].pose.orientation.y
                 transform.transform.rotation.z = self.ez_objects[object_name][1].pose.orientation.z
                 transform.transform.rotation.w = self.ez_objects[object_name][1].pose.orientation.w
-                self.tf_listener.setTransform(transform, "ez_helper")
+                self.tf2_buffer.set_transform(transform, "ez_helper")
 
                 # Object -> Gripper
                 transform = TransformStamped()
@@ -625,7 +623,7 @@ class EZToolSet():
                 transform.transform.rotation.y = g.grasp_pose.pose.orientation.y
                 transform.transform.rotation.z = g.grasp_pose.pose.orientation.z
                 transform.transform.rotation.w = g.grasp_pose.pose.orientation.w
-                self.tf_listener.setTransform(transform, "ez_helper")
+                self.tf2_buffer.set_transform(transform, "ez_helper")
 
                 transform_frame_gripper_trans = self.lookup_tf(self.arm_move_group.get_end_effector_link(), self.gripper_frame)
 
@@ -641,7 +639,7 @@ class EZToolSet():
                 transform.transform.rotation.y = transform_frame_gripper_trans.transform.rotation.y
                 transform.transform.rotation.z = transform_frame_gripper_trans.transform.rotation.z
                 transform.transform.rotation.w = transform_frame_gripper_trans.transform.rotation.w
-                self.tf_listener.setTransform(transform, "ez_helper")
+                self.tf2_buffer.set_transform(transform, "ez_helper")
 
                 # Graspit to MoveIt translation
                 # (Gripper -> Gripper)
@@ -653,7 +651,7 @@ class EZToolSet():
                 graspit_moveit_transform.transform.rotation.y = 0.0
                 graspit_moveit_transform.transform.rotation.z = 0.0
                 graspit_moveit_transform.transform.rotation.w = 0.7071
-                self.tf_listener.setTransform(graspit_moveit_transform, "ez_helper")
+                self.tf2_buffer.set_transform(graspit_moveit_transform, "ez_helper")
 
                 target_trans = self.lookup_tf("world", "ez_helper_target_graspit_pose")
 
@@ -706,7 +704,7 @@ class EZToolSet():
                 transform.transform.rotation.y = pose.pose.orientation.y
                 transform.transform.rotation.z = pose.pose.orientation.z
                 transform.transform.rotation.w = pose.pose.orientation.w
-                self.tf_listener.setTransform(transform, "calcTargetPose")
+                self.tf2_buffer.set_transform(transform, "calcTargetPose")
 
                 trans = self.lookup_tf("world", "ez_target_pose_calculator")
 
@@ -745,7 +743,7 @@ class EZToolSet():
                 transform.transform.rotation.y = pose.pose.orientation.y
                 transform.transform.rotation.z = pose.pose.orientation.z
                 transform.transform.rotation.w = pose.pose.orientation.w
-                self.tf_listener.setTransform(transform, "calcTargetPose")
+                self.tf2_buffer.set_transform(transform, "calcTargetPose")
 
                 trans = self.lookup_tf("world", "ez_target_pose_calculator")
 
@@ -779,9 +777,8 @@ class EZToolSet():
             t = self.moveit_scene.get_object_poses([target_object])
 
             # TODO This lookup is different than tf_echo... (HOW?!)
-            trans = self.lookup_tf(self.arm_move_group.get_end_effector_link(), "world")
+            trans = self.lookup_tf("world", self.arm_move_group.get_end_effector_link())
             print "trans"
-            print self.arm_move_group.get_end_effector_link()
             print trans
 
             obj = TransformStamped()
@@ -795,9 +792,9 @@ class EZToolSet():
             obj.transform.rotation.y = t[target_object].orientation.y
             obj.transform.rotation.z = t[target_object].orientation.z
             obj.transform.rotation.w = t[target_object].orientation.w
-            self.tf_listener.setTransform(obj, "calcTargetPose")
+            self.tf2_buffer.set_transform(obj, "calcTargetPose")
 
-            trans1 = self.lookup_tf(self.arm_move_group.get_end_effector_link(), "ez_target_pick")
+            trans1 = self.lookup_tf("ez_target_pick", self.arm_move_group.get_end_effector_link())
             print "trans1"
             print trans1
 
@@ -812,7 +809,7 @@ class EZToolSet():
             target_trans.transform.rotation.y = target.pose.orientation.y
             target_trans.transform.rotation.z = target.pose.orientation.z
             target_trans.transform.rotation.w = target.pose.orientation.w
-            self.tf_listener.setTransform(target_trans, "calcTargetPose")
+            self.tf2_buffer.set_transform(target_trans, "calcTargetPose")
 
             ee_target_trans = TransformStamped()
             ee_target_trans.header.stamp = rospy.Time.now()
@@ -825,9 +822,9 @@ class EZToolSet():
             ee_target_trans.transform.rotation.y = trans1.transform.rotation.y
             ee_target_trans.transform.rotation.z = trans1.transform.rotation.z
             ee_target_trans.transform.rotation.w = trans1.transform.rotation.w
-            self.tf_listener.setTransform(ee_target_trans, "calcTargetPose")
+            self.tf2_buffer.set_transform(ee_target_trans, "calcTargetPose")
 
-            trans2 = self.lookup_tf("ez_target_to_ee", "world")
+            trans2 = self.lookup_tf("world", "ez_target_to_ee")
             print "trans2"
             print trans2
 
