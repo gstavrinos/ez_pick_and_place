@@ -13,9 +13,6 @@ from manipulation_msgs.srv import GraspPlanning
 from moveit_msgs.srv import GetPositionIKRequest
 from std_srvs.srv import Trigger
 
-# TODO check eef points with the service below
-# and if it is successful, migrate everything to C++
-# to avoid service calls
 from moveit_msgs.srv import GetPositionIK
 
 class EZToolSet():
@@ -42,12 +39,14 @@ class EZToolSet():
     gripper_name = None
     gripper_frame = None
 
-    place_poses = []
+    target_place = None
+    target_object = None
+
     grasp_poses = []
-    neargrasp_poses = []
-    nearplace_poses = []
 
     compute_ik_srv = None
+
+    error_info = ""
 
     def stopPlanning(self, req):
         self.keep_planning = False
@@ -80,60 +79,38 @@ class EZToolSet():
     def attachThis(self, object_name):
         touch_links = self.robot_commander.get_link_names(self.gripper_move_group_name)
         self.arm_move_group.attach_object(object_name, link_name=self.arm_move_group.get_end_effector_link(), touch_links=touch_links)
-        # self.moveit_scene.attach_mesh(self.arm_move_group.get_end_effector_link(), name=object_name, pose=None, touch_links=touch_links)
 
     def detachThis(self, object_name):
         self.arm_move_group.detach_object(object_name)
 
-    def uberPlan(self, target, target_object):
-        if self.pick():
-            time.sleep(2)
-            t = self.calcTargetPoseBasedOnCurrentState(target, target_object)
-            self.attachThis(self.object_to_grasp)
-            if self.move(t):
-                self.detachThis(self.object_to_grasp)
-                return True
-        return False
+    def uberPlan(self):
+        return self.pick() and self.place()
 
     def pick(self):
-        print "Starting now!"
-
-        valid_preg = self.discard(self.neargrasp_poses)
         valid_g = self.discard(self.grasp_poses)
 
-        print "valid_preg"
-        print len(valid_preg)
-        print "valid_g"
-        print len(valid_g)
-
-        for i in xrange(len(valid_preg[0])):
+        if len(valid_g) > 0:
             for j in xrange(len(valid_g[0])):
                 self.arm_move_group.set_start_state_to_current_state()
-                plan1 = self.arm_move_group.plan()
-                if self.moveMultiple([valid_preg[0][i].pose, valid_g[0][j].pose]):
+                if self.move(valid_g[0][j].pose):
                     return True
+            self.error_info = "Error while trying to pick the object! "
+        else:
+            self.error_info = "No valid grasps were found! "
         return False
 
     def place(self):
-        valid_postg = self.discard(self.neargrasp_poses)
-        valid_prep = self.discard(self.nearplace_poses)
-        valid_p = self.discard(self.place_poses)
-        #valid_postp = self.discard(self.nearplace_poses)
-        print "valid_postg"
-        print len(valid_postg)
-        print "valid_prep"
-        print len(valid_prep)
-        print "valid_p"
-        print len(valid_p)
-        #print "valid_postp"
-        #print len(valid_postp)
-        for k in xrange(len(valid_postg[0])):
-            for l in xrange(len(valid_prep[0])):
-                for m in xrange(len(valid_p[0])):
-                    if self.moveMultiple([valid_postg[0][k].pose, valid_prep[0][l].pose, valid_p[0][m].pose]):
-                        self.detachThis(self.object_to_grasp)
-                        print valid_p[0][m].pose
-                        return True
+        time.sleep(1)
+        t = self.calcTargetPose(self.target_place, self.target_object)
+        if t:
+            self.attachThis(self.object_to_grasp)
+            if self.move(t):
+                time.sleep(1)
+                self.detachThis(self.object_to_grasp)
+                return True
+            self.error_info += "Error while trying to place the object!"
+        else:
+            self.error_info += "Error in transformations, while trying to place the object!"
         return False
 
     def discard(self, poses):
@@ -153,24 +130,24 @@ class EZToolSet():
 
     def startPlanningCallback(self, req):
         # TODO enable replanning
+
         # Initialize moveit stuff
         self.robot_commander = moveit_commander.RobotCommander()
         self.arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
         self.arm_move_group_name = req.arm_move_group
         self.object_to_grasp = req.graspit_target_object
         self.gripper_move_group_name = req.gripper_move_group
+
         # Call graspit
         graspit_grasps = self.graspThis(req.graspit_target_object)
+
         # Generate grasp poses
         self.translateGraspIt2MoveIt(graspit_grasps, req.graspit_target_object)
-        # Generate near grasp poses
-        self.neargrasp_poses = self.generateNearPoses(self.grasp_poses)
-        # Generate place poses
-        self.place_poses = self.calcTargetPoses(self.grasp_poses, req.target_place)
-        # Generate near place poses
-        self.nearplace_poses = self.generateNearPoses(self.place_poses)
 
-        return self.uberPlan(req.target_place, req.graspit_target_object), ""
+        self.target_place = req.target_place
+        self.target_object = req.graspit_target_object
+
+        return self.uberPlan(), self.error_info
 
     # Check if the input of the scene setup service is valid
     def validSceneSetupInput(self, req):
@@ -247,7 +224,6 @@ class EZToolSet():
             p.orientation.y = obj.pose.pose.orientation.y
             p.orientation.z = obj.pose.pose.orientation.z
             p.orientation.w = obj.pose.pose.orientation.w
-            #TODO orientation?
         else:
             try:
                 transform = TransformStamped()
@@ -327,7 +303,7 @@ class EZToolSet():
                 self.tf2_buffer.set_transform(transform, "ez_helper")
 
                 # Graspit to MoveIt translation
-                # (Gripper -> Gripper)
+                # (End Effector -> End Effector)
                 graspit_moveit_transform = TransformStamped()
                 graspit_moveit_transform.header.stamp = rospy.Time.now()
                 graspit_moveit_transform.header.frame_id = "ez_helper_fixed_graspit_pose"
@@ -340,183 +316,97 @@ class EZToolSet():
 
                 target_trans = self.lookup_tf("world", "ez_helper_target_graspit_pose")
 
-                g.grasp_pose.header.frame_id = "world"
-                g.grasp_pose.pose.position.x = target_trans.transform.translation.x
-                g.grasp_pose.pose.position.y = target_trans.transform.translation.y
-                g.grasp_pose.pose.position.z = target_trans.transform.translation.z
-                g.grasp_pose.pose.orientation.x = target_trans.transform.rotation.x
-                g.grasp_pose.pose.orientation.y = target_trans.transform.rotation.y
-                g.grasp_pose.pose.orientation.z = target_trans.transform.rotation.z
-                g.grasp_pose.pose.orientation.w = target_trans.transform.rotation.w
-                self.grasp_poses.append(g.grasp_pose)
+                # World -> End Effector
+                res_pose = PoseStamped()
+                res_pose.header.frame_id = "world"
+                res_pose.header.stamp = rospy.Time.now()
+                res_pose.pose.position.x = target_trans.transform.translation.x
+                res_pose.pose.position.y = target_trans.transform.translation.y
+                res_pose.pose.position.z = target_trans.transform.translation.z
+                res_pose.pose.orientation.x = target_trans.transform.rotation.x
+                res_pose.pose.orientation.y = target_trans.transform.rotation.y
+                res_pose.pose.orientation.z = target_trans.transform.rotation.z
+                res_pose.pose.orientation.w = target_trans.transform.rotation.w
+                self.grasp_poses.append(res_pose)
             except Exception as e:
                 print e
 
-    def calcNearPose(self, pose):
-        # TODO fix the near strategy
-        near_pose = PoseStamped()
-        near_pose.header = pose.header
-        near_pose.pose.position.x = pose.pose.position.x + random.uniform(-0.05, 0.05)
-        near_pose.pose.position.y = pose.pose.position.y + random.uniform(-0.05, 0.05)
-        near_pose.pose.position.z = pose.pose.position.z + random.uniform(-0.05, 0.15)
-        near_pose.pose.orientation = pose.pose.orientation
-        return near_pose
-
-    def calcTargetPose(self, pose, grasp_pose):
-        # TODO fix the situation of an exception
-        # Currently, we are doomed
-        target_pose = PoseStamped()
-        if pose.header.frame_id != "world":
+    # TODO sometimes the target pose is not correct. Investigate further...
+    def calcTargetPose(self, target, target_object):
+        tryagain = 0
+        while(tryagain < 3):
             try:
-                transform = TransformStamped()
-                transform.header.stamp = rospy.Time.now()
-                transform.header.frame_id = pose.header.frame_id
-                transform.child_frame_id = "ez_target_pose_calculator"
-                transform.transform.translation.x = pose.pose.position.x
-                transform.transform.translation.y = pose.pose.position.y
-                transform.transform.translation.z = pose.pose.position.z
-                transform.transform.rotation.x = pose.pose.orientation.x
-                transform.transform.rotation.y = pose.pose.orientation.y
-                transform.transform.rotation.z = pose.pose.orientation.z
-                transform.transform.rotation.w = pose.pose.orientation.w
-                self.tf2_buffer.set_transform(transform, "calcTargetPose")
+                t = self.moveit_scene.get_object_poses([target_object])
+                print "t"
+                print t
 
-                trans = self.lookup_tf("world", "ez_target_pose_calculator")
+                trans = self.lookup_tf("world", self.arm_move_group.get_end_effector_link())
+                print "trans"
+                print trans
 
+                obj = TransformStamped()
+                obj.header.stamp = rospy.Time.now()
+                obj.header.frame_id = "world"
+                obj.child_frame_id = "ez_target_pick"
+                obj.transform.translation.x = t[target_object].position.x
+                obj.transform.translation.y = t[target_object].position.y
+                obj.transform.translation.z = t[target_object].position.z
+                obj.transform.rotation.x = t[target_object].orientation.x
+                obj.transform.rotation.y = t[target_object].orientation.y
+                obj.transform.rotation.z = t[target_object].orientation.z
+                obj.transform.rotation.w = t[target_object].orientation.w
+                self.tf2_buffer.set_transform(obj, "calcTargetPose")
+
+                trans1 = self.lookup_tf(self.arm_move_group.get_end_effector_link(), "ez_target_pick")
+                print "trans1"
+                print trans1
+
+                target_trans = TransformStamped()
+                target_trans.header.stamp = rospy.Time.now()
+                target_trans.header.frame_id = target.header.frame_id
+                target_trans.child_frame_id = "ez_target_place"
+                target_trans.transform.translation.x = target.pose.position.x
+                target_trans.transform.translation.y = target.pose.position.y
+                target_trans.transform.translation.z = target.pose.position.z
+                target_trans.transform.rotation.x = target.pose.orientation.x
+                target_trans.transform.rotation.y = target.pose.orientation.y
+                target_trans.transform.rotation.z = target.pose.orientation.z
+                target_trans.transform.rotation.w = target.pose.orientation.w
+                self.tf2_buffer.set_transform(target_trans, "calcTargetPose")
+
+                ee_target_trans = TransformStamped()
+                ee_target_trans.header.stamp = rospy.Time.now()
+                ee_target_trans.header.frame_id = "ez_target_place"
+                ee_target_trans.child_frame_id = "ez_target_to_ee"
+                ee_target_trans.transform.translation.x = trans1.transform.translation.x
+                ee_target_trans.transform.translation.y = trans1.transform.translation.y
+                ee_target_trans.transform.translation.z = trans1.transform.translation.z
+                ee_target_trans.transform.rotation.x = trans1.transform.rotation.x
+                ee_target_trans.transform.rotation.y = trans1.transform.rotation.y
+                ee_target_trans.transform.rotation.z = trans1.transform.rotation.z
+                ee_target_trans.transform.rotation.w = trans1.transform.rotation.w
+                self.tf2_buffer.set_transform(ee_target_trans, "calcTargetPose")
+
+                trans2 = self.lookup_tf("world", "ez_target_to_ee")
+                print "trans2"
+                print trans2
+
+                target_pose = PoseStamped()
                 target_pose.header.stamp = rospy.Time.now()
                 target_pose.header.frame_id = "world"
-                target_pose.pose.position.x = trans.transform.translation.x
-                target_pose.pose.position.y = trans.transform.translation.y
-                target_pose.pose.position.z = trans.transform.translation.z
+                target_pose.pose.position.x = trans2.transform.translation.x
+                target_pose.pose.position.y = trans2.transform.translation.y
+                target_pose.pose.position.z = trans.transform.translation.z + 0.03
+                target_pose.pose.orientation.x = trans.transform.rotation.x
+                target_pose.pose.orientation.y = trans.transform.rotation.y
+                target_pose.pose.orientation.z = trans.transform.rotation.z
+                target_pose.pose.orientation.w = trans.transform.rotation.w
+                print target_pose
+                return target_pose
             except Exception as e:
+                tryagain += 1
                 print e
-        else:
-            target_pose.header = pose.header
-            target_pose.pose.position.x = pose.pose.position.x
-            target_pose.pose.position.y = pose.pose.position.y
-            target_pose.pose.position.z = pose.pose.position.z
-
-        target_pose.pose.orientation = grasp_pose.pose.orientation
-        target_pose.pose.position.z = grasp_pose.pose.position.z + 0.01
-        return target_pose
-
-    def calcTargetPoses(self, grasp_poses, pose):
-        # TODO fix the situation of an exception
-        # Currently, we are doomed
-        target_poses = []
-        target_pose = PoseStamped()
-        if pose.header.frame_id != "world":
-            try:
-                transform = TransformStamped()
-                transform.header.stamp = rospy.Time.now()
-                transform.header.frame_id = pose.header.frame_id
-                transform.child_frame_id = "ez_target_pose_calculator"
-                transform.transform.translation.x = pose.pose.position.x
-                transform.transform.translation.y = pose.pose.position.y
-                transform.transform.translation.z = pose.pose.position.z
-                transform.transform.rotation.x = pose.pose.orientation.x
-                transform.transform.rotation.y = pose.pose.orientation.y
-                transform.transform.rotation.z = pose.pose.orientation.z
-                transform.transform.rotation.w = pose.pose.orientation.w
-                self.tf2_buffer.set_transform(transform, "calcTargetPose")
-
-                trans = self.lookup_tf("world", "ez_target_pose_calculator")
-
-                target_pose.header.stamp = rospy.Time.now()
-                target_pose.header.frame_id = "world"
-                target_pose.pose.position.x = trans.transform.translation.x
-                target_pose.pose.position.y = trans.transform.translation.y
-                target_pose.pose.position.z = trans.transform.translation.z
-            except Exception as e:
-                print e
-        else:
-            target_pose.header = pose.header
-            target_pose.pose.position.x = pose.pose.position.x
-            target_pose.pose.position.y = pose.pose.position.y
-            target_pose.pose.position.z = pose.pose.position.z
-
-
-        for grasp_pose in grasp_poses:
-            target_pose_ = PoseStamped()
-            target_pose_.header = target_pose.header
-            target_pose_.pose.position.x = target_pose.pose.position.x
-            target_pose_.pose.position.y = target_pose.pose.position.y
-            target_pose_.pose.position.z = grasp_pose.pose.position.z + 0.01
-            target_pose_.pose.orientation = grasp_pose.pose.orientation
-            target_poses.append(target_pose_)
-        return target_poses
-
-    def calcTargetPoseBasedOnCurrentState(self, target, target_object):
-        # TODO Handle exception
-        try:
-            t = self.moveit_scene.get_object_poses([target_object])
-
-            # TODO This lookup is different than tf_echo... (HOW?!)
-            trans = self.lookup_tf("world", self.arm_move_group.get_end_effector_link())
-            print "trans"
-            print trans
-
-            obj = TransformStamped()
-            obj.header.stamp = rospy.Time.now()
-            obj.header.frame_id = "world"
-            obj.child_frame_id = "ez_target_pick"
-            obj.transform.translation.x = t[target_object].position.x
-            obj.transform.translation.y = t[target_object].position.y
-            obj.transform.translation.z = t[target_object].position.z
-            obj.transform.rotation.x = t[target_object].orientation.x
-            obj.transform.rotation.y = t[target_object].orientation.y
-            obj.transform.rotation.z = t[target_object].orientation.z
-            obj.transform.rotation.w = t[target_object].orientation.w
-            self.tf2_buffer.set_transform(obj, "calcTargetPose")
-
-            trans1 = self.lookup_tf("ez_target_pick", self.arm_move_group.get_end_effector_link())
-            print "trans1"
-            print trans1
-
-            target_trans = TransformStamped()
-            target_trans.header.stamp = rospy.Time.now()
-            target_trans.header.frame_id = target.header.frame_id
-            target_trans.child_frame_id = "ez_target_place"
-            target_trans.transform.translation.x = target.pose.position.x
-            target_trans.transform.translation.y = target.pose.position.y
-            target_trans.transform.translation.z = target.pose.position.z
-            target_trans.transform.rotation.x = target.pose.orientation.x
-            target_trans.transform.rotation.y = target.pose.orientation.y
-            target_trans.transform.rotation.z = target.pose.orientation.z
-            target_trans.transform.rotation.w = target.pose.orientation.w
-            self.tf2_buffer.set_transform(target_trans, "calcTargetPose")
-
-            ee_target_trans = TransformStamped()
-            ee_target_trans.header.stamp = rospy.Time.now()
-            ee_target_trans.header.frame_id = "ez_target_place"
-            ee_target_trans.child_frame_id = "ez_target_to_ee"
-            ee_target_trans.transform.translation.x = trans1.transform.translation.x
-            ee_target_trans.transform.translation.y = trans1.transform.translation.y
-            ee_target_trans.transform.translation.z = trans1.transform.translation.z
-            ee_target_trans.transform.rotation.x = trans1.transform.rotation.x
-            ee_target_trans.transform.rotation.y = trans1.transform.rotation.y
-            ee_target_trans.transform.rotation.z = trans1.transform.rotation.z
-            ee_target_trans.transform.rotation.w = trans1.transform.rotation.w
-            self.tf2_buffer.set_transform(ee_target_trans, "calcTargetPose")
-
-            trans2 = self.lookup_tf("world", "ez_target_to_ee")
-            print "trans2"
-            print trans2
-
-            target_pose = PoseStamped()
-            target_pose.header.stamp = rospy.Time.now()
-            target_pose.header.frame_id = "world"
-            target_pose.pose.position.x = trans2.transform.translation.x
-            target_pose.pose.position.y = trans2.transform.translation.y
-            target_pose.pose.position.z = trans.transform.translation.z + 0.01
-            target_pose.pose.orientation.x = trans.transform.rotation.x
-            target_pose.pose.orientation.y = trans.transform.rotation.y
-            target_pose.pose.orientation.z = trans.transform.rotation.z
-            target_pose.pose.orientation.w = trans.transform.rotation.w
-            print target_pose
-            return target_pose
-        except Exception as e:
-            print e
+        return None
 
 
     def scene_setup(self, req):
@@ -639,13 +529,3 @@ class EZToolSet():
             info.append(str(e))
             ec.append(res.EXCEPTION)
             return False, info, ec
-
-    def generateNearPoses(self, grasps):
-        poses = []
-        for g in grasps:
-            p = self.calcNearPose(g)
-            while p in poses:
-                p = self.calcNearPose(g)
-            poses.append(p)
-        return poses
-
