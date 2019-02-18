@@ -18,8 +18,6 @@ from std_srvs.srv import Trigger
 # to avoid service calls
 from moveit_msgs.srv import GetPositionIK
 
-from ez_state import EZState
-
 class EZToolSet():
 
     object_to_grasp = ""
@@ -49,25 +47,11 @@ class EZToolSet():
     neargrasp_poses = []
     nearplace_poses = []
 
-    grasp_plans = dict()
-    place_plans = dict()
-    pregrasp_plans = dict()
-    preplace_plans = dict()
-    postgrasp_plans = dict()
-    postplace_plans = dict()
-
     compute_ik_srv = None
-
-    #ez_state = EZState()
 
     def stopPlanning(self, req):
         self.keep_planning = False
         return True, ""
-
-    def reset(self, req):
-        if req.reset_position:
-            self.arm_move_group.set_named_target(req.reset_position)
-            return self.arm_move_group.go()
 
     def move(self, pose):
         self.arm_move_group.set_pose_target(pose)
@@ -75,10 +59,6 @@ class EZToolSet():
 
     def moveMultiple(self, poses):
         self.arm_move_group.set_pose_targets(poses)
-        return self.arm_move_group.go()
-
-    def moveToState(self, state):
-        self.arm_move_group.set_joint_value_target(state)
         return self.arm_move_group.go()
 
     def lookup_tf(self, target_frame, source_frame):
@@ -97,107 +77,13 @@ class EZToolSet():
 
         return response.grasps
 
-    # def attachThis(self, object_name):
-    #     touch_links = self.robot_commander.get_link_names(self.gripper_move_group_name)
-
     def attachThis(self, object_name):
         touch_links = self.robot_commander.get_link_names(self.gripper_move_group_name)
         self.arm_move_group.attach_object(object_name, link_name=self.arm_move_group.get_end_effector_link(), touch_links=touch_links)
-
         # self.moveit_scene.attach_mesh(self.arm_move_group.get_end_effector_link(), name=object_name, pose=None, touch_links=touch_links)
 
     def detachThis(self, object_name):
         self.arm_move_group.detach_object(object_name)
-
-    def nextGraspIndex(self, next_grasp_index):
-        next_grasp_index += 1
-        looped = False
-        if next_grasp_index >= len(self.grasp_poses):
-            next_grasp_index = 0
-            looped = True
-        return next_grasp_index, looped
-
-    def planFromTo(self, start_state, target_pose):
-        d = dict()
-        if start_state == 0:
-            self.arm_move_group.set_start_state_to_current_state()
-            for tp in target_pose:
-                self.arm_move_group.set_pose_target(tp)
-                d[tp] = self.arm_move_group.plan()
-        elif isinstance(start_state, basestring):
-            for ss in start_state:
-                target_dict = dict()
-                for tp in target_pose:
-                    # TODO
-                    # target_dict[tp] = 
-                    pass
-                # d[ss] = target_dict
-
-    def planCompletePnP(self, ez_state):
-        self.arm_move_group.set_pose_targets(ez_state.toPoseList())
-        # TODO divide the plan, attach object and continue planning
-        # instead of planning the whole thing without an object
-        return self.arm_move_group.plan()
-
-    # def uberPlan(self):
-    #     # TODO create the EZStates somewhere else, so we can store them
-    #     db = dict()
-
-    #     print "Starting now!"
-
-    #     valid_preg = self.discard(self.neargrasp_poses)
-    #     valid_g = self.discard(self.grasp_poses)
-    #     # TODO
-    #     # The 3 lines below need to have the object attached
-    #     valid_postg = self.discard(self.neargrasp_poses)
-    #     valid_prep = self.discard(self.nearplace_poses)
-    #     valid_p = self.discard(self.place_poses)
-    #     # TODO
-    #     # the postp needs to have the object placed for collision avoidance
-    #     valid_postp = self.discard(self.nearplace_poses)
-
-    #     print "valid_preg"
-    #     print len(valid_preg)
-    #     print "valid_g"
-    #     print len(valid_g)
-    #     print "valid_postg"
-    #     print len(valid_postg)
-    #     print "valid_prep"
-    #     print len(valid_prep)
-    #     print "valid_p"
-    #     print len(valid_p)
-    #     print "valid_postp"
-    #     print len(valid_postp)
-
-    #     print len(self.place_poses)
-    #     #print self.place_poses[0]
-    #     #print self.grasp_poses[0]
-
-    #     plan1 = None
-    #     plan2 = None
-
-    #     for i in xrange(len(valid_preg[0])):
-    #         for j in xrange(len(valid_g[0])):
-    #             self.arm_move_group.set_start_state_to_current_state()
-    #             self.arm_move_group.set_pose_targets([valid_preg[0][i].pose, valid_g[0][j].pose])
-    #             plan1 = self.arm_move_group.plan()
-    #             if len(plan1.joint_trajectory.points) > 0:
-    #                 critical_state = valid_g[1][j]
-    #                 self.arm_move_group.set_start_state(critical_state)
-    #                 self.attachThis(self.object_to_grasp)
-    #                 for k in xrange(len(valid_postg[0])):
-    #                     for l in xrange(len(valid_prep[0])):
-    #                         for m in xrange(len(valid_p[0])):
-    #                             self.arm_move_group.set_pose_targets([valid_postg[0][k].pose, valid_prep[0][l].pose, valid_p[0][m].pose])
-    #                             plan2 = self.arm_move_group.plan()
-    #                             print len(plan2.joint_trajectory.points)
-    #                             if len(plan2.joint_trajectory.points) > 0:
-    #                                 #for n in xrange(len(valid_p[0])):
-    #                                 self.detachThis(self.object_to_grasp)
-    #                                 print 'COMPLETE PLAN!!'
-    #                                 return plan1, plan2, critical_state, [valid_preg[0][i].pose, valid_g[0][j].pose, valid_postg[0][k].pose, valid_prep[0][l].pose, valid_p[0][m].pose]
-    #                 self.detachThis(self.object_to_grasp)
-    #     return None, None, None
 
     def uberPlan(self, target, target_object):
         if self.pick():
@@ -250,57 +136,6 @@ class EZToolSet():
                         return True
         return False
 
-        '''
-                #for vpostg in valid_postg:
-                    # for vprep in valid_prep:
-                    #     for vp in valid_p:
-                    #         for vpostp in valid_postp:
-        '''
-
-
-        # for g in self.grasp_poses:
-        #     req.ik_request.group_name = self.arm_move_group_name
-        #     req.ik_request.robot_state = k.solution#self.robot_commander.get_current_state()
-        #     req.ik_request.avoid_collisions = True
-        #     req.ik_request.pose_stamped = g
-        #     print "------------------------"
-        #     n = self.compute_ik_srv(req)
-        #     print n
-        #     if n.error_code.val == 1:
-        #         found += 1
-        #     total += 1
-        #     print "------------------------"
-        #     #for postg in self.neargrasp_poses:
-        #     if n.error_code.val == 1:
-        #         for prep in self.nearplace_poses:
-        #             req.ik_request.group_name = self.arm_move_group_name
-        #             req.ik_request.robot_state = n.solution#self.robot_commander.get_current_state()
-        #             req.ik_request.avoid_collisions = True
-        #             req.ik_request.pose_stamped = prep
-        #             print "------------------------"
-        #             l = self.compute_ik_srv(req)
-        #             print l
-        #             if l.error_code.val == 1:
-        #                 found += 1
-        #             total += 1
-        #             print "------------------------"
-        #             if l.error_code.val == 1:
-        #                 for p in self.place_poses:
-        #                     req.ik_request.group_name = self.arm_move_group_name
-        #                     req.ik_request.robot_state = l.solution#self.robot_commander.get_current_state()
-        #                     req.ik_request.avoid_collisions = True
-        #                     req.ik_request.pose_stamped = p
-        #                     print "------------------------"
-        #                     m = self.compute_ik_srv(req)
-        #                     print m
-        #                     if m.error_code.val == 1:
-        #                         found += 1
-        #                     total += 1
-        #                     print "------------------------"
-        #                 #for postp in self.nearplace_poses:
-                                  #cur_state = EZState(preg, g, postg, prep, p, postp)
-                                  #db[cur_state] = self.planCompletePnP(cur_state)
-
     def discard(self, poses):
         validp = []
         validrs = []
@@ -335,157 +170,7 @@ class EZToolSet():
         # Generate near place poses
         self.nearplace_poses = self.generateNearPoses(self.place_poses)
 
-        # Generate a plan for every combination :)
-        # plan1, plan2, critical_state, chosen_poses = self.uberPlan()
-
-        # #print plan1
-        # print "###############################"
-        # #print plan2
-        # #print self.place_poses
-        # if plan1 and plan2:
-        #     print "BEFORE1"
-        #     step1 = self.arm_move_group.execute(plan1)
-        #     self.attachThis(self.object_to_grasp)
-        #     time.sleep(2)
-        #     print "AFTER1"
-        #     print "BEFORE2"
-        #     # TODO check here for start state deviation
-        #     if not self.moveToState(critical_state):
-        #         print "lalala"
-        #         self.moveMultiple(chosen_poses[3:4])
-        #         self.move(chosen_poses[4])
-        #     time.sleep(2)
-        #     print "AFTER2"
-        #     print "BEFORE3"
-        #     step2 = self.arm_move_group.execute(plan2)
-        #     time.sleep(2)
-        #     self.detachThis(self.object_to_grasp)
-        #     print "AFTER3"
-        #     if step1 and step2:
-        #         return True, "EZ"
-        #     else:
-        #         return False, "A plan was found but failed during execution..."
-        # else:
-        #     return False, "No valid plan was found..."
-
-
-
         return self.uberPlan(req.target_place, req.graspit_target_object), ""
-
-
-        # # Generate plans for current to near grasp poses
-        # self.pregrasp_plans = planFromTo(0, nearplace_poses)
-        # # Generate plans for near grasp poses to grasp poses
-        # self.grasp_plans = planFromTo()
-        # # Generate plans for grasp poses to near grasp poses
-        # self.postgrasp_plans = planFromTo()
-        # # Generate plans for near grasp poses to near place poses
-        # self.preplace_plans = planFromTo()
-        # # Generate plans for near place poses to place pose
-        # self.place_plans = planFromTo()
-        # # Generate plans for place pose to near place poses
-        # self.postplace_plans = planFromTo()
-
-
-
-    # TODO use set_start_state of the move group
-    # so that we can plan the whole thing without 
-    # moving the robot!
-    # TODO2 send a moveit goal for the gripper positions,
-    # and since SCHUNK PG70 drivers suck,
-    # create a wrapper of those messages to make the required
-    # service calls to the PG70 drivers
-    def startPlanning(self, req):
-        self.robot_commander = moveit_commander.RobotCommander()
-
-        self.arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
-
-        self.keep_planning = True
-        remaining_secs = req.secs_to_timeout
-        timeout_disabled = req.secs_to_timeout <= 0
-        t0 = time.clock()
-        on_reset_pose = False
-        away_from_grasp_pose = True
-        # TODO add info on service regarding a reset position
-        try:
-            holding_object = False
-            graspit_grasps = self.graspThis(req.graspit_target_object)
-            self.translateGraspIt2MoveIt(graspit_grasps, req.graspit_target_object)
-            next_grasp_index = 0
-            near_grasp_pose = PoseStamped()
-            near_place_pose = PoseStamped()
-            while self.keep_planning and (timeout_disabled or remaining_secs > 0) and not rospy.is_shutdown():
-                if not timeout_disabled:
-                    remaining_secs -= time.clock() - t0
-                try:
-                    if not holding_object:
-                        near_grasp_pose = self.calcNearGraspPose(self.grasp_poses[next_grasp_index])
-                        # Did we successfully move to the pre-grasping position?
-                        if self.move(near_grasp_pose):
-                            on_reset_pose = False
-                            print "Reached pregrasp pose!"
-                            time.sleep(2)
-                            if self.move(self.grasp_poses[next_grasp_index]):
-                                away_from_grasp_pose = False
-                                print "Reached grasp pose!"
-                                time.sleep(2)
-                                # TODO send grasp command
-                                print "Holding the object!"
-                                self.attachThis(req.graspit_target_object)
-                                time.sleep(5)
-                                holding_object = True
-                                continue
-                            else:
-                                next_grasp_index, looped = self.nextGraspIndex(next_grasp_index)
-                                if looped and req.allow_replanning:
-                                    graspit_grasps = self.graspThis(req.graspit_target_object)
-                                    self.translateGraspIt2MoveIt(graspit_grasps, req.graspit_target_object)
-                                    next_grasp_index = 0
-                                continue
-                        else:
-                            if not on_reset_pose and self.reset(req):
-                                on_reset_pose = True
-                            next_grasp_index, looped = self.nextGraspIndex(next_grasp_index)
-                            if looped and req.allow_replanning:
-                                graspit_grasps = self.graspThis(req.graspit_target_object)
-                                self.translateGraspIt2MoveIt(graspit_grasps, req.graspit_target_object)
-                                next_grasp_index = 0
-                    else:
-                        target_pose = self.calcTargetPose(req.target_place, near_grasp_pose)
-                        near_place_pose = self.calcNearPlacePose(target_pose)
-                        if not away_from_grasp_pose and self.move(near_grasp_pose):
-                            on_reset_pose = False
-                            away_from_grasp_pose = True
-                            print "Reached postgrasp pose!"
-                            time.sleep(2)
-                            continue
-                        elif away_from_grasp_pose and self.move(near_place_pose):
-                            print "Reached preplace pose!"
-                            time.sleep(2)
-                            if self.move(target_pose):
-                                print "Reached place pose!"
-                                time.sleep(2)
-                                # TODO send ungrip command
-                                print "Placed the object!"
-                                self.moveit_scene.remove_attached_object(self.arm_move_group.get_end_effector_link(), req.graspit_target_object)
-                                time.sleep(5)
-                                holding_object = False
-                                # stop trying now, but also try as a last move to
-                                # reach the preplace pose again
-                                self.move(near_place_pose)
-                                return True, "That was smoooooth :)"
-                        elif not on_reset_pose and self.reset(req):
-                                on_reset_pose = True
-                                away_from_grasp_pose = True
-
-                except Exception as e:
-                    print str(e)
-        except Exception as e:
-            print str(e)
-            return False, str(e)
-        if not timeout_disabled and remaining_secs <= 0:
-            return False, "Timeout!"
-        return True, ""
 
     # Check if the input of the scene setup service is valid
     def validSceneSetupInput(self, req):
@@ -667,7 +352,7 @@ class EZToolSet():
             except Exception as e:
                 print e
 
-    def calcNearGraspPose(self, pose):
+    def calcNearPose(self, pose):
         # TODO fix the near strategy
         near_pose = PoseStamped()
         near_pose.header = pose.header
@@ -675,16 +360,6 @@ class EZToolSet():
         near_pose.pose.position.y = pose.pose.position.y + random.uniform(-0.05, 0.05)
         near_pose.pose.position.z = pose.pose.position.z + random.uniform(-0.05, 0.15)
         near_pose.pose.orientation = pose.pose.orientation
-        return near_pose
-
-    def calcNearPlacePose(self, target_pose):
-        # TODO fix the near strategy
-        near_pose = PoseStamped()
-        near_pose.header = target_pose.header
-        near_pose.pose.position.x = target_pose.pose.position.x + random.uniform(-0.05, 0.05)
-        near_pose.pose.position.y = target_pose.pose.position.y + random.uniform(-0.05, 0.05)
-        near_pose.pose.position.z = target_pose.pose.position.z + random.uniform(-0.05, 0.15)
-        near_pose.pose.orientation = target_pose.pose.orientation
         return near_pose
 
     def calcTargetPose(self, pose, grasp_pose):
@@ -968,13 +643,9 @@ class EZToolSet():
     def generateNearPoses(self, grasps):
         poses = []
         for g in grasps:
-            p = self.calcNearGraspPose(g)
+            p = self.calcNearPose(g)
             while p in poses:
-                p = self.calcNearGraspPose(g)
+                p = self.calcNearPose(g)
             poses.append(p)
         return poses
-
-    # TODO
-    def generateInitStates(self):
-        return []
 
