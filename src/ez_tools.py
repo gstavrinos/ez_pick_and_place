@@ -40,7 +40,6 @@ class EZToolSet():
     gripper_frame = None
 
     target_place = None
-    target_object = None
 
     grasp_poses = []
 
@@ -56,8 +55,8 @@ class EZToolSet():
         self.arm_move_group.set_pose_target(pose)
         return self.arm_move_group.go()
 
-    def moveMultiple(self, poses):
-        self.arm_move_group.set_pose_targets(poses)
+    def moveToState(self, state):
+        self.arm_move_group.set_joint_value_target(state)
         return self.arm_move_group.go()
 
     def lookup_tf(self, target_frame, source_frame):
@@ -93,6 +92,7 @@ class EZToolSet():
             for j in xrange(len(valid_g[0])):
                 self.arm_move_group.set_start_state_to_current_state()
                 if self.move(valid_g[0][j].pose):
+                    time.sleep(1)
                     return True
             self.error_info = "Error while trying to pick the object! "
         else:
@@ -100,17 +100,20 @@ class EZToolSet():
         return False
 
     def place(self):
+        # Attached objects are removed me the MoveIt scene
+        # so we have to query before we attach it
+        obj_trans = self.moveit_scene.get_object_poses([self.object_to_grasp])
+        self.attachThis(self.object_to_grasp)
         time.sleep(1)
-        t = self.calcTargetPose(self.target_place, self.target_object)
-        if t:
-            self.attachThis(self.object_to_grasp)
-            if self.move(t):
+        t, sol = self.calcTargetPose(obj_trans)
+        if t and sol:
+            if self.moveToState(sol) or self.move(t):
                 time.sleep(1)
                 self.detachThis(self.object_to_grasp)
                 return True
             self.error_info += "Error while trying to place the object!"
         else:
-            self.error_info += "Error in transformations, while trying to place the object!"
+            self.error_info += "Error while trying to find a way to place the object!"
         return False
 
     def discard(self, poses):
@@ -131,21 +134,34 @@ class EZToolSet():
     def startPlanningCallback(self, req):
         # TODO enable replanning
 
+        # TODO enable gripping movement..........
+
+        # TODO allow for two modes
+        # 1. Specify only x,y and 
+        # let the algorithm make out the rest, assuming that
+        # the place surface is the same as the pick one
+        # 2. Specify pos and rot for the object
+        # and let the algorithm find the ee's corresponding pose
+
         # Initialize moveit stuff
         self.robot_commander = moveit_commander.RobotCommander()
         self.arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
+
+        # Save request values to use them later in the pipeline
         self.arm_move_group_name = req.arm_move_group
         self.object_to_grasp = req.graspit_target_object
         self.gripper_move_group_name = req.gripper_move_group
+        self.target_place = req.target_place
+
+        # TODO istead of calling grasIt once and waiting
+        # way too long, try calling it once, and then
+        # call it again only if we fail to find a valid solution
 
         # Call graspit
         graspit_grasps = self.graspThis(req.graspit_target_object)
 
         # Generate grasp poses
         self.translateGraspIt2MoveIt(graspit_grasps, req.graspit_target_object)
-
-        self.target_place = req.target_place
-        self.target_object = req.graspit_target_object
 
         return self.uberPlan(), self.error_info
 
@@ -215,146 +231,148 @@ class EZToolSet():
 
     # Graspit bodies are always referenced relatively to the "world" frame
     def fixItForGraspIt(self, obj, pose_factor):
-        p = Pose()
-        if obj.pose.header.frame_id == "world":
-            p.position.x = obj.pose.pose.position.x * pose_factor
-            p.position.y = obj.pose.pose.position.y * pose_factor
-            p.position.z = obj.pose.pose.position.z * pose_factor
-            p.orientation.x = obj.pose.pose.orientation.x
-            p.orientation.y = obj.pose.pose.orientation.y
-            p.orientation.z = obj.pose.pose.orientation.z
-            p.orientation.w = obj.pose.pose.orientation.w
-        else:
-            try:
-                transform = TransformStamped()
-                transform.header.stamp = rospy.Time.now()
-                transform.header.frame_id = obj.pose.header.frame_id
-                transform.child_frame_id = "ez_fix_it_for_grasp_it"
-                transform.transform.translation.x = obj.pose.pose.position.x
-                transform.transform.translation.y = obj.pose.pose.position.y
-                transform.transform.translation.z = obj.pose.pose.position.z
-                transform.transform.rotation.x = obj.pose.pose.orientation.x
-                transform.transform.rotation.y = obj.pose.pose.orientation.y
-                transform.transform.rotation.z = obj.pose.pose.orientation.z
-                transform.transform.rotation.w = obj.pose.pose.orientation.w
-                self.tf2_buffer.set_transform(transform, "fixItForGraspIt")
+        for tryagain in xrange(0, 4):
+            p = Pose()
+            if obj.pose.header.frame_id == "world":
+                p.position.x = obj.pose.pose.position.x * pose_factor
+                p.position.y = obj.pose.pose.position.y * pose_factor
+                p.position.z = obj.pose.pose.position.z * pose_factor
+                p.orientation.x = obj.pose.pose.orientation.x
+                p.orientation.y = obj.pose.pose.orientation.y
+                p.orientation.z = obj.pose.pose.orientation.z
+                p.orientation.w = obj.pose.pose.orientation.w
+                return p
+            else:
+                try:
+                    transform = TransformStamped()
+                    transform.header.stamp = rospy.Time.now()
+                    transform.header.frame_id = obj.pose.header.frame_id
+                    transform.child_frame_id = "ez_fix_it_for_grasp_it"
+                    transform.transform.translation.x = obj.pose.pose.position.x
+                    transform.transform.translation.y = obj.pose.pose.position.y
+                    transform.transform.translation.z = obj.pose.pose.position.z
+                    transform.transform.rotation.x = obj.pose.pose.orientation.x
+                    transform.transform.rotation.y = obj.pose.pose.orientation.y
+                    transform.transform.rotation.z = obj.pose.pose.orientation.z
+                    transform.transform.rotation.w = obj.pose.pose.orientation.w
+                    self.tf2_buffer.set_transform(transform, "fixItForGraspIt")
 
-                trans = self.lookup_tf("ez_fix_it_for_grasp_it", "world")
+                    trans = self.lookup_tf("ez_fix_it_for_grasp_it", "world")
 
-                p.position.x = trans.transform.translation.x * pose_factor
-                p.position.y = trans.transform.translation.y * pose_factor
-                p.position.z = trans.transform.translation.z * pose_factor
-                p.orientation.x = trans.transform.rotation.x
-                p.orientation.y = trans.transform.rotation.y
-                p.orientation.z = trans.transform.rotation.z
-                p.orientation.w = trans.transform.rotation.w
-            except Exception as e:
-                print e
-
-        return p
+                    p.position.x = trans.transform.translation.x * pose_factor
+                    p.position.y = trans.transform.translation.y * pose_factor
+                    p.position.z = trans.transform.translation.z * pose_factor
+                    p.orientation.x = trans.transform.rotation.x
+                    p.orientation.y = trans.transform.rotation.y
+                    p.orientation.z = trans.transform.rotation.z
+                    p.orientation.w = trans.transform.rotation.w
+                    return p
+                except Exception as e:
+                    print e
+        return None
 
     # GraspIt and MoveIt appear to have a 90 degree difference in the x axis (roll 90 degrees)
     def translateGraspIt2MoveIt(self, grasps, object_name):
-        self.grasp_poses = []
-        for g in grasps:
-            try:
-                # World -> Object
-                transform = TransformStamped()
-                transform.header.stamp = rospy.Time.now()
-                transform.header.frame_id = "world"
-                transform.child_frame_id = "target_object_frame"
-                transform.transform.translation.x = self.ez_objects[object_name][1].pose.position.x
-                transform.transform.translation.y = self.ez_objects[object_name][1].pose.position.y
-                transform.transform.translation.z = self.ez_objects[object_name][1].pose.position.z
-                transform.transform.rotation.x = self.ez_objects[object_name][1].pose.orientation.x
-                transform.transform.rotation.y = self.ez_objects[object_name][1].pose.orientation.y
-                transform.transform.rotation.z = self.ez_objects[object_name][1].pose.orientation.z
-                transform.transform.rotation.w = self.ez_objects[object_name][1].pose.orientation.w
-                self.tf2_buffer.set_transform(transform, "ez_helper")
+        for tryagain in xrange(0,4):
+            self.grasp_poses = []
+            for g in grasps:
+                try:
+                    # World -> Object
+                    transform = TransformStamped()
+                    transform.header.stamp = rospy.Time.now()
+                    transform.header.frame_id = "world"
+                    transform.child_frame_id = "target_object_frame"
+                    transform.transform.translation.x = self.ez_objects[object_name][1].pose.position.x
+                    transform.transform.translation.y = self.ez_objects[object_name][1].pose.position.y
+                    transform.transform.translation.z = self.ez_objects[object_name][1].pose.position.z
+                    transform.transform.rotation.x = self.ez_objects[object_name][1].pose.orientation.x
+                    transform.transform.rotation.y = self.ez_objects[object_name][1].pose.orientation.y
+                    transform.transform.rotation.z = self.ez_objects[object_name][1].pose.orientation.z
+                    transform.transform.rotation.w = self.ez_objects[object_name][1].pose.orientation.w
+                    self.tf2_buffer.set_transform(transform, "ez_helper")
 
-                # Object -> Gripper
-                transform = TransformStamped()
-                transform.header.stamp = rospy.Time.now()
-                transform.header.frame_id = "target_object_frame"
-                transform.child_frame_id = "ez_helper_graspit_pose"
-                transform.transform.translation.x = g.grasp_pose.pose.position.x
-                transform.transform.translation.y = g.grasp_pose.pose.position.y
-                transform.transform.translation.z = g.grasp_pose.pose.position.z
-                transform.transform.rotation.x = g.grasp_pose.pose.orientation.x
-                transform.transform.rotation.y = g.grasp_pose.pose.orientation.y
-                transform.transform.rotation.z = g.grasp_pose.pose.orientation.z
-                transform.transform.rotation.w = g.grasp_pose.pose.orientation.w
-                self.tf2_buffer.set_transform(transform, "ez_helper")
+                    # Object -> Gripper
+                    transform = TransformStamped()
+                    transform.header.stamp = rospy.Time.now()
+                    transform.header.frame_id = "target_object_frame"
+                    transform.child_frame_id = "ez_helper_graspit_pose"
+                    transform.transform.translation.x = g.grasp_pose.pose.position.x
+                    transform.transform.translation.y = g.grasp_pose.pose.position.y
+                    transform.transform.translation.z = g.grasp_pose.pose.position.z
+                    transform.transform.rotation.x = g.grasp_pose.pose.orientation.x
+                    transform.transform.rotation.y = g.grasp_pose.pose.orientation.y
+                    transform.transform.rotation.z = g.grasp_pose.pose.orientation.z
+                    transform.transform.rotation.w = g.grasp_pose.pose.orientation.w
+                    self.tf2_buffer.set_transform(transform, "ez_helper")
 
-                transform_frame_gripper_trans = self.lookup_tf(self.arm_move_group.get_end_effector_link(), self.gripper_frame)
+                    transform_frame_gripper_trans = self.lookup_tf(self.arm_move_group.get_end_effector_link(), self.gripper_frame)
 
-                # Gripper -> End Effector
-                transform = TransformStamped()
-                transform.header.stamp = rospy.Time.now()
-                transform.header.frame_id = "ez_helper_graspit_pose"
-                transform.child_frame_id = "ez_helper_fixed_graspit_pose"
-                transform.transform.translation.x = -transform_frame_gripper_trans.transform.translation.x
-                transform.transform.translation.y = -transform_frame_gripper_trans.transform.translation.y
-                transform.transform.translation.z = -transform_frame_gripper_trans.transform.translation.z
-                transform.transform.rotation.x = transform_frame_gripper_trans.transform.rotation.x
-                transform.transform.rotation.y = transform_frame_gripper_trans.transform.rotation.y
-                transform.transform.rotation.z = transform_frame_gripper_trans.transform.rotation.z
-                transform.transform.rotation.w = transform_frame_gripper_trans.transform.rotation.w
-                self.tf2_buffer.set_transform(transform, "ez_helper")
+                    # Gripper -> End Effector
+                    transform = TransformStamped()
+                    transform.header.stamp = rospy.Time.now()
+                    transform.header.frame_id = "ez_helper_graspit_pose"
+                    transform.child_frame_id = "ez_helper_fixed_graspit_pose"
+                    transform.transform.translation.x = -transform_frame_gripper_trans.transform.translation.x
+                    transform.transform.translation.y = -transform_frame_gripper_trans.transform.translation.y
+                    transform.transform.translation.z = -transform_frame_gripper_trans.transform.translation.z
+                    transform.transform.rotation.x = transform_frame_gripper_trans.transform.rotation.x
+                    transform.transform.rotation.y = transform_frame_gripper_trans.transform.rotation.y
+                    transform.transform.rotation.z = transform_frame_gripper_trans.transform.rotation.z
+                    transform.transform.rotation.w = transform_frame_gripper_trans.transform.rotation.w
+                    self.tf2_buffer.set_transform(transform, "ez_helper")
 
-                # Graspit to MoveIt translation
-                # (End Effector -> End Effector)
-                graspit_moveit_transform = TransformStamped()
-                graspit_moveit_transform.header.stamp = rospy.Time.now()
-                graspit_moveit_transform.header.frame_id = "ez_helper_fixed_graspit_pose"
-                graspit_moveit_transform.child_frame_id = "ez_helper_target_graspit_pose"
-                graspit_moveit_transform.transform.rotation.x = 0.7071
-                graspit_moveit_transform.transform.rotation.y = 0.0
-                graspit_moveit_transform.transform.rotation.z = 0.0
-                graspit_moveit_transform.transform.rotation.w = 0.7071
-                self.tf2_buffer.set_transform(graspit_moveit_transform, "ez_helper")
+                    # Graspit to MoveIt translation
+                    # (End Effector -> End Effector)
+                    graspit_moveit_transform = TransformStamped()
+                    graspit_moveit_transform.header.stamp = rospy.Time.now()
+                    graspit_moveit_transform.header.frame_id = "ez_helper_fixed_graspit_pose"
+                    graspit_moveit_transform.child_frame_id = "ez_helper_target_graspit_pose"
+                    graspit_moveit_transform.transform.rotation.x = 0.7071
+                    graspit_moveit_transform.transform.rotation.y = 0.0
+                    graspit_moveit_transform.transform.rotation.z = 0.0
+                    graspit_moveit_transform.transform.rotation.w = 0.7071
+                    self.tf2_buffer.set_transform(graspit_moveit_transform, "ez_helper")
 
-                target_trans = self.lookup_tf("world", "ez_helper_target_graspit_pose")
+                    target_trans = self.lookup_tf("world", "ez_helper_target_graspit_pose")
 
-                # World -> End Effector
-                res_pose = PoseStamped()
-                res_pose.header.frame_id = "world"
-                res_pose.header.stamp = rospy.Time.now()
-                res_pose.pose.position.x = target_trans.transform.translation.x
-                res_pose.pose.position.y = target_trans.transform.translation.y
-                res_pose.pose.position.z = target_trans.transform.translation.z
-                res_pose.pose.orientation.x = target_trans.transform.rotation.x
-                res_pose.pose.orientation.y = target_trans.transform.rotation.y
-                res_pose.pose.orientation.z = target_trans.transform.rotation.z
-                res_pose.pose.orientation.w = target_trans.transform.rotation.w
-                self.grasp_poses.append(res_pose)
-            except Exception as e:
-                print e
+                    # World -> End Effector
+                    res_pose = PoseStamped()
+                    res_pose.header.frame_id = "world"
+                    res_pose.header.stamp = rospy.Time.now()
+                    res_pose.pose.position.x = target_trans.transform.translation.x
+                    res_pose.pose.position.y = target_trans.transform.translation.y
+                    res_pose.pose.position.z = target_trans.transform.translation.z
+                    res_pose.pose.orientation.x = target_trans.transform.rotation.x
+                    res_pose.pose.orientation.y = target_trans.transform.rotation.y
+                    res_pose.pose.orientation.z = target_trans.transform.rotation.z
+                    res_pose.pose.orientation.w = target_trans.transform.rotation.w
+                    self.grasp_poses.append(res_pose)
+                except Exception as e:
+                    self.grasp_poses = []
+                    print e
 
     # TODO sometimes the target pose is not correct. Investigate further...
-    def calcTargetPose(self, target, target_object):
-        tryagain = 0
-        while(tryagain < 3):
+    def calcTargetPose(self, obj_trans):
+        for tryagain in xrange(0,4):
             try:
-                t = self.moveit_scene.get_object_poses([target_object])
-                print "t"
-                print t
+                print "obj_trans"
+                print obj_trans
 
-                trans = self.lookup_tf("world", self.arm_move_group.get_end_effector_link())
-                print "trans"
-                print trans
+                world_trans = self.lookup_tf("world", self.arm_move_group.get_end_effector_link())
+                print "world_trans"
+                print world_trans
 
                 obj = TransformStamped()
                 obj.header.stamp = rospy.Time.now()
                 obj.header.frame_id = "world"
                 obj.child_frame_id = "ez_target_pick"
-                obj.transform.translation.x = t[target_object].position.x
-                obj.transform.translation.y = t[target_object].position.y
-                obj.transform.translation.z = t[target_object].position.z
-                obj.transform.rotation.x = t[target_object].orientation.x
-                obj.transform.rotation.y = t[target_object].orientation.y
-                obj.transform.rotation.z = t[target_object].orientation.z
-                obj.transform.rotation.w = t[target_object].orientation.w
+                obj.transform.translation.x = obj_trans[self.object_to_grasp].position.x
+                obj.transform.translation.y = obj_trans[self.object_to_grasp].position.y
+                obj.transform.translation.z = obj_trans[self.object_to_grasp].position.z
+                obj.transform.rotation.x = obj_trans[self.object_to_grasp].orientation.x
+                obj.transform.rotation.y = obj_trans[self.object_to_grasp].orientation.y
+                obj.transform.rotation.z = obj_trans[self.object_to_grasp].orientation.z
+                obj.transform.rotation.w = obj_trans[self.object_to_grasp].orientation.w
                 self.tf2_buffer.set_transform(obj, "calcTargetPose")
 
                 trans1 = self.lookup_tf(self.arm_move_group.get_end_effector_link(), "ez_target_pick")
@@ -363,15 +381,15 @@ class EZToolSet():
 
                 target_trans = TransformStamped()
                 target_trans.header.stamp = rospy.Time.now()
-                target_trans.header.frame_id = target.header.frame_id
+                target_trans.header.frame_id = self.target_place.header.frame_id
                 target_trans.child_frame_id = "ez_target_place"
-                target_trans.transform.translation.x = target.pose.position.x
-                target_trans.transform.translation.y = target.pose.position.y
-                target_trans.transform.translation.z = target.pose.position.z
-                target_trans.transform.rotation.x = target.pose.orientation.x
-                target_trans.transform.rotation.y = target.pose.orientation.y
-                target_trans.transform.rotation.z = target.pose.orientation.z
-                target_trans.transform.rotation.w = target.pose.orientation.w
+                target_trans.transform.translation.x = self.target_place.pose.position.x
+                target_trans.transform.translation.y = self.target_place.pose.position.y
+                target_trans.transform.translation.z = self.target_place.pose.position.z
+                target_trans.transform.rotation.x = self.target_place.pose.orientation.x
+                target_trans.transform.rotation.y = self.target_place.pose.orientation.y
+                target_trans.transform.rotation.z = self.target_place.pose.orientation.z
+                target_trans.transform.rotation.w = self.target_place.pose.orientation.w
                 self.tf2_buffer.set_transform(target_trans, "calcTargetPose")
 
                 ee_target_trans = TransformStamped()
@@ -391,22 +409,55 @@ class EZToolSet():
                 print "trans2"
                 print trans2
 
+                specific_trans = TransformStamped()
+                specific_trans2 = TransformStamped()
+                specific_flag = False
+                if self.target_place.header.frame_id != "world":
+                    specific_flag = True
+                    specific_trans = self.lookup_tf(self.target_place.header.frame_id, self.arm_move_group.get_end_effector_link())
+                    specific_trans = self.lookup_tf(self.target_place.header.frame_id, "ez_target_to_ee")
+
                 target_pose = PoseStamped()
                 target_pose.header.stamp = rospy.Time.now()
-                target_pose.header.frame_id = "world"
-                target_pose.pose.position.x = trans2.transform.translation.x
-                target_pose.pose.position.y = trans2.transform.translation.y
-                target_pose.pose.position.z = trans.transform.translation.z + 0.03
-                target_pose.pose.orientation.x = trans.transform.rotation.x
-                target_pose.pose.orientation.y = trans.transform.rotation.y
-                target_pose.pose.orientation.z = trans.transform.rotation.z
-                target_pose.pose.orientation.w = trans.transform.rotation.w
+                if not specific_flag:
+                    target_pose.header.frame_id = "world"
+                    target_pose.pose.position.x = trans2.transform.translation.x
+                    target_pose.pose.position.y = trans2.transform.translation.y
+                    target_pose.pose.position.z = world_trans.transform.translation.z
+                    target_pose.pose.orientation.x = world_trans.transform.rotation.x
+                    target_pose.pose.orientation.y = world_trans.transform.rotation.y
+                    target_pose.pose.orientation.z = world_trans.transform.rotation.z
+                    target_pose.pose.orientation.w = world_trans.transform.rotation.w
+                else:
+                    target_pose.header.frame_id = self.target_place.header.frame_id
+                    target_pose.pose.position.x = specific_trans2.transform.translation.x
+                    target_pose.pose.position.y = specific_trans2.transform.translation.y
+                    target_pose.pose.position.z = specific_trans.transform.translation.z
+                    target_pose.pose.orientation.x = specific_trans.transform.rotation.x
+                    target_pose.pose.orientation.y = specific_trans.transform.rotation.y
+                    target_pose.pose.orientation.z = specific_trans.transform.rotation.z
+                    target_pose.pose.orientation.w = specific_trans.transform.rotation.w
+
+                curr_state = self.robot_commander.get_current_state()
+                attobj = self.moveit_scene.get_attached_objects([self.object_to_grasp])
+                curr_state.attached_collision_objects = [attobj[self.object_to_grasp]]
+                req = GetPositionIKRequest()
+                req.ik_request.group_name = self.arm_move_group_name
+                req.ik_request.robot_state = curr_state
+                req.ik_request.avoid_collisions = True
+
                 print target_pose
-                return target_pose
+
+                for i in xrange(0,6):
+                    target_pose.pose.position.z = world_trans.transform.translation.z + i * 0.01
+                    req.ik_request.pose_stamped = target_pose
+                    k = self.compute_ik_srv(req)
+                    if k.error_code.val == 1:
+                        print target_pose
+                        return target_pose, k.solution
             except Exception as e:
-                tryagain += 1
                 print e
-        return None
+        return None, None
 
 
     def scene_setup(self, req):
@@ -513,7 +564,6 @@ class EZToolSet():
                 p.position.x = gripper_trans.transform.translation.x * req.pose_factor
                 p.position.y = gripper_trans.transform.translation.y * req.pose_factor
                 p.position.z = gripper_trans.transform.translation.z * req.pose_factor
-                # TODO orientation is not important (right?)
                 loadm.model_pose = p
                 response = self.load_model_srv(loadm)
 
