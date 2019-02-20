@@ -351,7 +351,7 @@ class EZToolSet():
                     self.grasp_poses = []
                     print e
 
-    # TODO sometimes the target pose is not correct. Investigate further...
+    # TODO gyrate around the target place while maintaining the object pose!
     def calcTargetPose(self, obj_trans):
         for tryagain in xrange(0,4):
             try:
