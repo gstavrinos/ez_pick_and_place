@@ -358,14 +358,14 @@ class EZToolSet():
                 print "obj_trans"
                 print obj_trans
 
-                world_trans = self.lookup_tf("world", self.arm_move_group.get_end_effector_link())
-                print "world_trans"
-                print world_trans
+                start_trans = self.lookup_tf(self.target_place.header.frame_id, self.arm_move_group.get_end_effector_link())
+                print "start_trans"
+                print start_trans
 
                 obj = TransformStamped()
                 obj.header.stamp = rospy.Time.now()
                 obj.header.frame_id = "world"
-                obj.child_frame_id = "ez_target_pick"
+                obj.child_frame_id = "ez_target_pick_world"
                 obj.transform.translation.x = obj_trans[self.object_to_grasp].position.x
                 obj.transform.translation.y = obj_trans[self.object_to_grasp].position.y
                 obj.transform.translation.z = obj_trans[self.object_to_grasp].position.z
@@ -375,7 +375,25 @@ class EZToolSet():
                 obj.transform.rotation.w = obj_trans[self.object_to_grasp].orientation.w
                 self.tf2_buffer.set_transform(obj, "calcTargetPose")
 
-                trans1 = self.lookup_tf(self.arm_move_group.get_end_effector_link(), "ez_target_pick")
+                pick_to_target_frame_trans = self.lookup_tf(self.target_place.header.frame_id, "ez_target_pick_world")
+
+                print "pick_to_target_frame_trans"
+                print pick_to_target_frame_trans
+
+                ptt = TransformStamped()
+                ptt.header.stamp = rospy.Time.now()
+                ptt.header.frame_id = self.target_place.header.frame_id
+                ptt.child_frame_id = "ez_target_pick"
+                ptt.transform.translation.x = pick_to_target_frame_trans.transform.translation.x
+                ptt.transform.translation.y = pick_to_target_frame_trans.transform.translation.y
+                ptt.transform.translation.z = pick_to_target_frame_trans.transform.translation.z
+                ptt.transform.rotation.x = pick_to_target_frame_trans.transform.rotation.x
+                ptt.transform.rotation.y = pick_to_target_frame_trans.transform.rotation.y
+                ptt.transform.rotation.z = pick_to_target_frame_trans.transform.rotation.z
+                ptt.transform.rotation.w = pick_to_target_frame_trans.transform.rotation.w
+                self.tf2_buffer.set_transform(ptt, "calcTargetPose")
+
+                trans1 = self.lookup_tf("ez_target_pick", self.arm_move_group.get_end_effector_link())
                 print "trans1"
                 print trans1
 
@@ -386,10 +404,10 @@ class EZToolSet():
                 target_trans.transform.translation.x = self.target_place.pose.position.x
                 target_trans.transform.translation.y = self.target_place.pose.position.y
                 target_trans.transform.translation.z = self.target_place.pose.position.z
-                target_trans.transform.rotation.x = self.target_place.pose.orientation.x
-                target_trans.transform.rotation.y = self.target_place.pose.orientation.y
-                target_trans.transform.rotation.z = self.target_place.pose.orientation.z
-                target_trans.transform.rotation.w = self.target_place.pose.orientation.w
+                target_trans.transform.rotation.x = pick_to_target_frame_trans.transform.rotation.x
+                target_trans.transform.rotation.y = pick_to_target_frame_trans.transform.rotation.y
+                target_trans.transform.rotation.z = pick_to_target_frame_trans.transform.rotation.z
+                target_trans.transform.rotation.w = pick_to_target_frame_trans.transform.rotation.w
                 self.tf2_buffer.set_transform(target_trans, "calcTargetPose")
 
                 ee_target_trans = TransformStamped()
@@ -405,38 +423,20 @@ class EZToolSet():
                 ee_target_trans.transform.rotation.w = trans1.transform.rotation.w
                 self.tf2_buffer.set_transform(ee_target_trans, "calcTargetPose")
 
-                trans2 = self.lookup_tf("world", "ez_target_to_ee")
+                trans2 = self.lookup_tf(self.target_place.header.frame_id, "ez_target_to_ee")
                 print "trans2"
                 print trans2
 
-                specific_trans = TransformStamped()
-                specific_trans2 = TransformStamped()
-                specific_flag = False
-                if self.target_place.header.frame_id != "world":
-                    specific_flag = True
-                    specific_trans = self.lookup_tf(self.target_place.header.frame_id, self.arm_move_group.get_end_effector_link())
-                    specific_trans = self.lookup_tf(self.target_place.header.frame_id, "ez_target_to_ee")
-
                 target_pose = PoseStamped()
                 target_pose.header.stamp = rospy.Time.now()
-                if not specific_flag:
-                    target_pose.header.frame_id = "world"
-                    target_pose.pose.position.x = trans2.transform.translation.x
-                    target_pose.pose.position.y = trans2.transform.translation.y
-                    target_pose.pose.position.z = world_trans.transform.translation.z
-                    target_pose.pose.orientation.x = world_trans.transform.rotation.x
-                    target_pose.pose.orientation.y = world_trans.transform.rotation.y
-                    target_pose.pose.orientation.z = world_trans.transform.rotation.z
-                    target_pose.pose.orientation.w = world_trans.transform.rotation.w
-                else:
-                    target_pose.header.frame_id = self.target_place.header.frame_id
-                    target_pose.pose.position.x = specific_trans2.transform.translation.x
-                    target_pose.pose.position.y = specific_trans2.transform.translation.y
-                    target_pose.pose.position.z = specific_trans.transform.translation.z
-                    target_pose.pose.orientation.x = specific_trans.transform.rotation.x
-                    target_pose.pose.orientation.y = specific_trans.transform.rotation.y
-                    target_pose.pose.orientation.z = specific_trans.transform.rotation.z
-                    target_pose.pose.orientation.w = specific_trans.transform.rotation.w
+                target_pose.header.frame_id = self.target_place.header.frame_id
+                target_pose.pose.position.x = trans2.transform.translation.x
+                target_pose.pose.position.y = trans2.transform.translation.y
+                target_pose.pose.position.z = start_trans.transform.translation.z
+                target_pose.pose.orientation.x = start_trans.transform.rotation.x
+                target_pose.pose.orientation.y = start_trans.transform.rotation.y
+                target_pose.pose.orientation.z = start_trans.transform.rotation.z
+                target_pose.pose.orientation.w = start_trans.transform.rotation.w
 
                 curr_state = self.robot_commander.get_current_state()
                 attobj = self.moveit_scene.get_attached_objects([self.object_to_grasp])
@@ -446,10 +446,11 @@ class EZToolSet():
                 req.ik_request.robot_state = curr_state
                 req.ik_request.avoid_collisions = True
 
+                print "target_pose"
                 print target_pose
 
                 for i in xrange(0,6):
-                    target_pose.pose.position.z = world_trans.transform.translation.z + i * 0.01
+                    target_pose.pose.position.z = start_trans.transform.translation.z + i * 0.01
                     req.ik_request.pose_stamped = target_pose
                     k = self.compute_ik_srv(req)
                     if k.error_code.val == 1:
