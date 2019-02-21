@@ -72,7 +72,7 @@ def main():
     target_place = PoseStamped()
     target_place.header.frame_id = "base_link"
     target_place.pose.position.x = 0.285
-    target_place.pose.position.y = -0.253
+    target_place.pose.position.y = 0.253
     target_place.pose.position.z = 0.2
     target_place.pose.orientation.w = 1.0
 

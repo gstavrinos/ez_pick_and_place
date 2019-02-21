@@ -11,13 +11,11 @@ from moveit_msgs.srv import GetPositionIK
 from std_srvs.srv import Trigger
 
 from ez_tools import EZToolSet
-from ezpnp_sim_annealing import EzPnP
 
 ez_tools = None
 
 def main():
-    global ez_tools, add_model_srv, load_model_srv, planning_srv
-
+    global ez_tools
     moveit_commander.roscpp_initialize(sys.argv)
     rospy.init_node("ez_pnp")
 
@@ -36,16 +34,10 @@ def main():
     ez_tools.compute_ik_srv = rospy.ServiceProxy("/compute_ik", GetPositionIK)
     rospy.wait_for_service("/compute_ik")
 
-    scene_srv = rospy.Service("ez_pnp/scene_setup", EzSceneSetup, ez_tools.scene_setup)
-    start_srv = rospy.Service("ez_pnp/start_planning", EzStartPlanning, ez_tools.startPlanningCallback)
+    start_srv = rospy.Service("ez_pnp/start_planning", EzStartPlanning, ez_tools.startPlanning)
+    scene_srv = rospy.Service("ez_pnp/scene_setup", EzSceneSetup, ez_tools.sceneSetup)
     stop_srv = rospy.Service("ez_pnp/stop_planning", Trigger, ez_tools.stopPlanning)
 
-    #rospy.spin()
-
-    # TODO
-    while not rospy.is_shutdown():
-        if len(ez_tools.grasp_poses) > 0:
-            #annealer = EzPnP([], ez_tools)
-            continue
+    rospy.spin()
 
 main()
