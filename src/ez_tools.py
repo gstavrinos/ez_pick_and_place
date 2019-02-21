@@ -8,8 +8,8 @@ from math import sqrt, atan2
 from tf.transformations import quaternion_from_euler, quaternion_multiply
 
 from grasp_planning_graspit_msgs.srv import AddToDatabaseRequest, LoadDatabaseModelRequest
-from geometry_msgs.msg import TransformStamped, PoseStamped, Pose, Quaternion
 from ez_pick_and_place.srv import EzSceneSetupResponse, EzStartPlanning
+from geometry_msgs.msg import TransformStamped, PoseStamped, Pose
 from household_objects_database_msgs.msg import DatabaseModelPose
 from manipulation_msgs.msg import GraspableObject
 from moveit_msgs.srv import GetPositionIKRequest
@@ -299,20 +299,7 @@ class EZToolSet():
         dy = p[1] - center[1]
         yaw = atan2(dy, dx)
         quat = quaternion_from_euler(0, 0, yaw)
-        #quat = Quaternion(yaw_[0], yaw_[1], yaw_[2], yaw_[3])
         quat_start = [curr_quat.x, curr_quat.y, curr_quat.z, curr_quat.w]
-        print "dx"
-        print dx
-        print "dy"
-        print dy
-        print "yaw"
-        print yaw
-        print "quat"
-        print quat
-        print "curr_quat"
-        print curr_quat
-        print "multiplied"
-        print quaternion_multiply(quat, quat_start)
         return list(quaternion_multiply(quat, quat_start))
 
     def gyrate(self, object_trans, curr_trans, step):
@@ -341,12 +328,8 @@ class EZToolSet():
     def calcTargetPose(self, obj_trans):
         for tryagain in xrange(0,4):
             try:
-                print "obj_trans"
-                print obj_trans
 
                 start_trans = self.lookupTF(self.target_place.header.frame_id, self.arm_move_group.get_end_effector_link())
-                print "start_trans"
-                print start_trans
 
                 obj = TransformStamped()
                 #obj.header.stamp = rospy.Time.now()
@@ -363,9 +346,6 @@ class EZToolSet():
 
                 pick_to_target_frame_trans = self.lookupTF(self.target_place.header.frame_id, "ez_target_pick_world")
 
-                print "pick_to_target_frame_trans"
-                print pick_to_target_frame_trans
-
                 ptt = TransformStamped()
                 ptt.header.stamp = rospy.Time.now()
                 ptt.header.frame_id = self.target_place.header.frame_id
@@ -380,8 +360,6 @@ class EZToolSet():
                 self.tf2_buffer.set_transform(ptt, "calcTargetPose")
 
                 trans1 = self.lookupTF("ez_target_pick", self.arm_move_group.get_end_effector_link())
-                print "trans1"
-                print trans1
 
                 target_trans = TransformStamped()
                 #target_trans.header.stamp = rospy.Time.now()
@@ -410,19 +388,11 @@ class EZToolSet():
                 self.tf2_buffer.set_transform(ee_target_trans, "calcTargetPose")
 
                 trans2 = self.lookupTF(self.target_place.header.frame_id, "ez_target_to_ee")
-                print "trans2"
-                print trans2
 
                 target_pose = PoseStamped()
                 #target_pose.header.stamp = rospy.Time.now()
                 target_pose.header.frame_id = self.target_place.header.frame_id
-                # target_pose.pose.position.x = trans2.transform.translation.x
-                # target_pose.pose.position.y = trans2.transform.translation.y
                 target_pose.pose.position.z = start_trans.transform.translation.z
-                # target_pose.pose.orientation.x = start_trans.transform.rotation.x
-                # target_pose.pose.orientation.y = start_trans.transform.rotation.y
-                # target_pose.pose.orientation.z = start_trans.transform.rotation.z
-                # target_pose.pose.orientation.w = start_trans.transform.rotation.w
 
                 curr_state = self.robot_commander.get_current_state()
                 # get_current_state does not include the attached object, so we add it manually
@@ -435,11 +405,7 @@ class EZToolSet():
 
                 gyrated_poses = self.gyrate(target_trans, start_trans, 0.1)
 
-                print "target_pose"
-                print target_pose
-
                 for gp in gyrated_poses:
-                    print gp
                     for i in xrange(0,6):
                         target_pose.pose.position.x = gp[0][0]
                         target_pose.pose.position.y = gp[0][1]
@@ -451,7 +417,6 @@ class EZToolSet():
                         req.ik_request.pose_stamped = target_pose
                         k = self.compute_ik_srv(req)
                         if k.error_code.val == 1:
-                            print target_pose
                             return target_pose, k.solution
             except Exception as e:
                 print e
