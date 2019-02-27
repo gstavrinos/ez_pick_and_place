@@ -2,19 +2,18 @@
 import time
 import numpy
 import rospy
-import random
 import moveit_commander
+
 from math import sqrt, atan2
 from tf.transformations import quaternion_from_euler, quaternion_multiply
 
 from grasp_planning_graspit_msgs.srv import AddToDatabaseRequest, LoadDatabaseModelRequest
-from ez_pick_and_place.srv import EzSceneSetupResponse, EzStartPlanning
+from ez_pick_and_place.srv import EzSceneSetupResponse
 from geometry_msgs.msg import TransformStamped, PoseStamped, Pose
 from household_objects_database_msgs.msg import DatabaseModelPose
 from manipulation_msgs.msg import GraspableObject
 from moveit_msgs.srv import GetPositionIKRequest
 from manipulation_msgs.srv import GraspPlanning
-from std_srvs.srv import Trigger
 
 from moveit_msgs.srv import GetPositionIK
 
@@ -23,8 +22,11 @@ class EZToolSet():
     object_to_grasp = ""
     arm_move_group = None
     robot_commander = None
+    gripper_move_group = ""
     arm_move_group_name = ""
     gripper_move_group_name = ""
+
+    pose_factor = 1000
 
     tf2_buffer = None
     tf2_listener = None
@@ -34,10 +36,11 @@ class EZToolSet():
     add_model_srv = None
     load_model_srv = None
 
-    keep_planning = True
-
     ez_objects = dict()
     ez_obstacles = dict()
+
+    pose_n_joint = dict()
+    gripper_joint_bounds = dict()
 
     gripper_name = None
     gripper_frame = None
@@ -50,21 +53,58 @@ class EZToolSet():
 
     error_info = ""
 
-    def stopPlanning(self, req):
-        self.keep_planning = False
-        return True, ""
-
+    # Move the whole arm to the specified pose
     def move(self, pose):
         self.arm_move_group.set_pose_target(pose)
         return self.arm_move_group.go()
 
+    # Move the whole arm to the specified state
     def moveToState(self, state):
         self.arm_move_group.set_joint_value_target(state)
         return self.arm_move_group.go()
 
+    # Maximize all gripper joints
+    def openGripper(self):
+        curr_state = self.robot_commander.get_current_state()
+        joint_pos = list(curr_state.joint_state.position)
+        names = curr_state.joint_state.name
+        for i in xrange(len(names)):
+                if names[i] in self.gripper_joint_bounds:
+                    joint_pos[i] = self.gripper_joint_bounds[names[i]]
+        curr_state.joint_state.position = joint_pos
+        return self.moveGripperToState(curr_state)
+
+    # Moves all joints based on a graspit result
+    # and manipulate the scene object
+    def grab(self, graspit_result):
+        self.attachThis(self.object_to_grasp)
+        res = self.moveGripper(graspit_result)
+        self.detachThis(self.object_to_grasp)
+        return res
+
+    # Move all joints based on a graspit result
+    def moveGripper(self, graspit_result):
+        curr_state = self.robot_commander.get_current_state()
+        joint_pos = list(curr_state.joint_state.position)
+        names = curr_state.joint_state.name
+        for i in xrange(len(graspit_result.name)):
+            for j in xrange(len(names)):
+                if graspit_result.name[i] == names[j]:
+                    joint_pos[j] = self.gripper_joint_bounds[names[j]] - abs(graspit_result.position[i] / self.pose_factor)
+                    break
+        curr_state.joint_state.position = joint_pos
+        return self.moveGripperToState(curr_state)
+
+    # Move all gripper joints to the specified state
+    def moveGripperToState(self, state):
+        self.gripper_move_group.set_joint_value_target(state)
+        return self.gripper_move_group.go()
+
+    # Shortcut of tf's lookup_transform
     def lookupTF(self, target_frame, source_frame):
         return self.tf2_buffer.lookup_transform(target_frame, source_frame, rospy.Time(), rospy.Duration(10))
 
+    # Call graspit for the specified object
     def graspThis(self, object_name):
         dbmp = DatabaseModelPose()
         dbmp.model_id = self.ez_objects[object_name][0]
@@ -78,17 +118,25 @@ class EZToolSet():
 
         return response.grasps
 
+    # Shortcut of movegroup's attach_object
     def attachThis(self, object_name):
         touch_links = self.robot_commander.get_link_names(self.gripper_move_group_name)
         self.arm_move_group.attach_object(object_name, link_name=self.arm_move_group.get_end_effector_link(), touch_links=touch_links)
 
+    # Shortcut of movegroup's detach_object
     def detachThis(self, object_name):
         self.arm_move_group.detach_object(object_name)
 
+    # Pick and place!
     def uberPlan(self):
         return self.pick() and self.place()
 
+    # Open the gripper, move the arm to the grasping pose
+    # and grab the object
     def pick(self):
+        # GraspIt assumes maxed out joints, so that's what we do here
+        self.openGripper()
+        time.sleep(1)
         valid_g = self.discard(self.grasp_poses)
 
         if len(valid_g) > 0:
@@ -96,12 +144,14 @@ class EZToolSet():
                 self.arm_move_group.set_start_state_to_current_state()
                 if self.move(valid_g[0][j].pose):
                     time.sleep(1)
-                    return True
-            self.error_info = "Error while trying to pick the object! "
+                    return self.grab(self.pose_n_joint[valid_g[0][j]])
+            self.error_info = "Error while trying to pick the object!"
         else:
-            self.error_info = "No valid grasps were found! "
+            self.error_info = "No valid grasps were found!"
         return False
 
+    # Move the arm to the place pose and open the gripper
+    # to release the object
     def place(self):
         # Attached objects are removed from the MoveIt scene
         # so we have to query before we attach it
@@ -112,13 +162,21 @@ class EZToolSet():
         if t and sol:
             if self.moveToState(sol) or self.move(t):
                 time.sleep(1)
+                self.openGripper()
                 self.detachThis(self.object_to_grasp)
                 return True
-            self.error_info += "Error while trying to place the object!"
+            self.error_info = "Error while trying to place the object!"
         else:
-            self.error_info += "Error while trying to find a way to place the object!"
+            self.error_info = "Error while trying to find a way to place the object!"
         return False
 
+    # Get the upper limit for each of the gripper's joints
+    def getGripperBounds(self):
+        for joint in self.gripper_move_group.get_joints():
+            self.gripper_joint_bounds[joint] = self.robot_commander.get_joint(joint).max_bound()
+
+    # Compute inverse kinematics for candidate poses
+    # and discard those without a solution
     def discard(self, poses):
         validp = []
         validrs = []
@@ -132,23 +190,16 @@ class EZToolSet():
             if k.error_code.val == 1:
                 validp.append(p)
                 validrs.append(k.solution)
-        return [validp, validrs]
+        if validp:
+            return [validp, validrs]
+        return []
 
+    # The planning service callback
     def startPlanning(self, req):
-        # TODO enable replanning
-
-        # TODO enable gripping movement..........
-
-        # TODO allow for two modes
-        # 1. Specify only x,y and 
-        # let the algorithm make out the rest, assuming that
-        # the place surface is the same as the pick one
-        # 2. Specify pos and rot for the object
-        # and let the algorithm find the ee's corresponding pose
-
         # Initialize moveit stuff
         self.robot_commander = moveit_commander.RobotCommander()
         self.arm_move_group = moveit_commander.MoveGroupCommander(req.arm_move_group)
+        self.gripper_move_group = moveit_commander.MoveGroupCommander(req.gripper_move_group)
 
         # Save request values to use them later in the pipeline
         self.arm_move_group_name = req.arm_move_group
@@ -156,9 +207,8 @@ class EZToolSet():
         self.gripper_move_group_name = req.gripper_move_group
         self.target_place = req.target_place
 
-        # TODO istead of calling grasIt once and waiting
-        # way too long, try calling it once, and then
-        # call it again only if we fail to find a valid solution
+        # Get bounds for each gipper joint, so we can later use the graspit values
+        self.getGripperBounds()
 
         # Call graspit
         graspit_grasps = self.graspThis(req.graspit_target_object)
@@ -168,10 +218,12 @@ class EZToolSet():
 
         return self.uberPlan(), self.error_info
 
-    # Graspit bodies are always referenced relatively to the "world" frame
+    # Graspit bodies are always referenced relatively to the "world" frame,
+    # and units are not expressed in meters so translate the user's input
     def fixItForGraspIt(self, obj, pose_factor):
         for tryagain in xrange(0, 4):
             p = Pose()
+            # If the user has provided the object wrt the world frame
             if obj.pose.header.frame_id == "world":
                 p.position.x = obj.pose.pose.position.x * pose_factor
                 p.position.y = obj.pose.pose.position.y * pose_factor
@@ -181,6 +233,7 @@ class EZToolSet():
                 p.orientation.z = obj.pose.pose.orientation.z
                 p.orientation.w = obj.pose.pose.orientation.w
                 return p
+            # Else transform it to the world frame
             else:
                 try:
                     transform = TransformStamped()
@@ -207,10 +260,11 @@ class EZToolSet():
                     p.orientation.w = trans.transform.rotation.w
                     return p
                 except Exception as e:
-                    print e
+                    print "fixItForGraspIt" + str(e)
         return None
 
-    # GraspIt and MoveIt appear to have a 90 degree difference in the x axis (roll 90 degrees)
+    # GraspIt and MoveIt appear to have a 90 degree difference in the x axis (roll 90 degrees),
+    # so translate everything for moveit compatibility
     def translateGraspIt2MoveIt(self, grasps, object_name):
         for tryagain in xrange(0,4):
             self.grasp_poses = []
@@ -286,14 +340,18 @@ class EZToolSet():
                     res_pose.pose.orientation.z = target_trans.transform.rotation.z
                     res_pose.pose.orientation.w = target_trans.transform.rotation.w
                     self.grasp_poses.append(res_pose)
+                    self.pose_n_joint[res_pose] = g.grasp_posture
                 except Exception as e:
                     self.grasp_poses = []
-                    print e
+                    print "translateGraspIt2MoveIt:" + str(e)
                     break
 
+    # Calculate the distance between two transformations in 2D (excluding the Z axis)
     def distanceXY(self, pose1, pose2):
         return sqrt((pose1.transform.translation.x**2 - pose2.transform.translation.x**2) + (pose1.transform.translation.y**2 - pose2.transform.translation.y**2))
 
+    # Use atan2 and quaternion multiplication to "look at" the specified center
+    # based on a specified current pose
     def lookAt(self, curr_quat, center, p):
         dx = p[0] - center[0]
         dy = p[1] - center[1]
@@ -302,6 +360,9 @@ class EZToolSet():
         quat_start = [curr_quat.x, curr_quat.y, curr_quat.z, curr_quat.w]
         return list(quaternion_multiply(quat, quat_start))
 
+    # Based on the specified object transformation, find poses in a circle
+    # with the object as the center, that maintain the object's pitch and roll rotations
+    # utilizing the lookAt function
     def gyrate(self, object_trans, curr_trans, step):
         center = [object_trans.transform.translation.x, object_trans.transform.translation.y]
         poses = []
@@ -325,6 +386,7 @@ class EZToolSet():
                     poses.append([[x_, y_],new_quat])
         return poses
 
+    # Calculate the place pose of the end effector, based on the picked object's pose
     def calcTargetPose(self, obj_trans):
         for tryagain in xrange(0,4):
             try:
@@ -419,7 +481,7 @@ class EZToolSet():
                         if k.error_code.val == 1:
                             return target_pose, k.solution
             except Exception as e:
-                print e
+                print "calcTargetPose" + str(e)
         return None, None
 
     # Check if the input of the scene setup service is valid
@@ -440,7 +502,7 @@ class EZToolSet():
             info.append("Invalid service input: No graspit filename provided for the gripper")
             error_codes.append(tmp2.NO_FILENAME)
             return False, info, error_codes
-        if req.pose_factor <= 0:
+        if self.pose_factor <= 0:
             info.append("Invalid service input: pose_factor cannot be negative or zero")
             error_codes.append(tmp2.INVALID_POSE_FACTOR)
             return False, info, error_codes
@@ -486,7 +548,10 @@ class EZToolSet():
                 return False, info, error_codes
         return True, info, error_codes
 
+    # The scene setup service callback
     def sceneSetup(self, req):
+        self.pose_factor = req.pose_factor if req.pose_factor > 0 else self.pose_factor
+
         valid, info, ec = self.validSceneSetupInput(req)
 
         self.gripper_frame = req.gripper_frame
@@ -516,7 +581,7 @@ class EZToolSet():
 
                         loadm = LoadDatabaseModelRequest()
                         loadm.model_id = objectID
-                        loadm.model_pose = self.fixItForGraspIt(obj, req.pose_factor)
+                        loadm.model_pose = self.fixItForGraspIt(obj, self.pose_factor)
                         response = self.load_model_srv(loadm)
 
                         self.ez_objects[obj.name] = [objectID, obj.pose]
@@ -549,7 +614,7 @@ class EZToolSet():
 
                         loadm = LoadDatabaseModelRequest()
                         loadm.model_id = obstacleID
-                        loadm.model_pose = self.fixItForGraspIt(obstacle, req.pose_factor)
+                        loadm.model_pose = self.fixItForGraspIt(obstacle, self.pose_factor)
                         response = self.load_model_srv(loadm)
 
                         self.ez_obstacles[obstacle.name] = [obstacleID, obstacle.pose]
@@ -587,9 +652,9 @@ class EZToolSet():
 
                 gripper_trans = self.lookupTF(self.gripper_frame, "world")
 
-                p.position.x = gripper_trans.transform.translation.x * req.pose_factor
-                p.position.y = gripper_trans.transform.translation.y * req.pose_factor
-                p.position.z = gripper_trans.transform.translation.z * req.pose_factor
+                p.position.x = gripper_trans.transform.translation.x * self.pose_factor
+                p.position.y = gripper_trans.transform.translation.y * self.pose_factor
+                p.position.z = gripper_trans.transform.translation.z * self.pose_factor
                 loadm.model_pose = p
                 response = self.load_model_srv(loadm)
 
