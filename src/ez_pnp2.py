@@ -8,14 +8,10 @@ from grasp_planning_graspit_msgs.srv import AddToDatabase, LoadDatabaseModel
 from ez_pick_and_place.srv import EzSceneSetup, EzStartPlanning
 from manipulation_msgs.srv import GraspPlanning
 from moveit_msgs.srv import GetPositionIK
-from std_srvs.srv import Trigger
 
 from ez_tools import EZToolSet
 
-ez_tools = None
-
 def main():
-    global ez_tools
     moveit_commander.roscpp_initialize(sys.argv)
     rospy.init_node("ez_pnp")
 
@@ -36,7 +32,6 @@ def main():
 
     start_srv = rospy.Service("ez_pnp/start_planning", EzStartPlanning, ez_tools.startPlanning)
     scene_srv = rospy.Service("ez_pnp/scene_setup", EzSceneSetup, ez_tools.sceneSetup)
-    stop_srv = rospy.Service("ez_pnp/stop_planning", Trigger, ez_tools.stopPlanning)
 
     rospy.spin()
 
