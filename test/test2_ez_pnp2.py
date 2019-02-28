@@ -60,8 +60,8 @@ def main():
     obj.pose.pose.position.z = 1.035
     obj.pose.pose.orientation.x = 0
     obj.pose.pose.orientation.y = 0
-    obj.pose.pose.orientation.z = 0
-    obj.pose.pose.orientation.w = 1
+    obj.pose.pose.orientation.z = 1.0
+    obj.pose.pose.orientation.w = 0
 
     req.objects.append(obj)
 
