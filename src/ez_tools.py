@@ -74,7 +74,7 @@ class EZToolSet():
         curr_state.joint_state.position = joint_pos
         return self.moveGripperToState(curr_state)
 
-    # Moves all joints based on a graspit result
+    # Move all joints based on a graspit result
     # and manipulate the scene object
     def grab(self, graspit_result):
         self.attachThis(self.object_to_grasp)
