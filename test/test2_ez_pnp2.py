@@ -82,7 +82,6 @@ def main():
     doit.target_place = target_place
     doit.arm_move_group = "arm"
     doit.gripper_move_group = "gripper"
-    doit.secs_to_timeout = 480
 
     response = start_planning_srv(doit)
 

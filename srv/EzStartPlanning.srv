@@ -2,7 +2,6 @@ string graspit_target_object
 geometry_msgs/PoseStamped target_place
 string arm_move_group
 string gripper_move_group
-int32 secs_to_timeout
 bool allow_replanning
 ---
 bool success
