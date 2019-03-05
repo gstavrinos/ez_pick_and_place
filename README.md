@@ -50,7 +50,7 @@ With everything up and running ez_pick_and_place provides two services:
 
     * `string gripper_move_group`: Provide the name of the gripper move group.
 
-    * `bool allow_replanning`: Not used (yet).
+    * `int32 max_replanning`: Provide the number of maximum planning __retries__. This means that with `max_replanning=0` you will only get 1 try. GraspIt fails quite often, so it is advised to allow for a maximum of two or more retries.
 
 For further info on how to use the package, you can refer to the `test2_ez_pnp2.py` script under the `test` directory of this repository, which was used to create the the first animation of this doc.
 
@@ -99,7 +99,7 @@ Using Blender you can create and modify 3D models in order to make them useable 
 
 ## Recommendations, reminders and extra info
 
-* In order for GraspIt to provide the algorithm with enough candidate grasp poses, we are using this [configuration file](https://github.com/Roboskel-Manipulation/manos_graspit_config/blob/master/config/graspit_planner_opt.yaml). You can experiment with your own configuration based on your needs, but always refer to the one provided.
+* In order for GraspIt to provide the algorithm with enough candidate grasp poses, we are using this [configuration file](https://github.com/Roboskel-Manipulation/manos_graspit_config/blob/master/config/graspit_planner_opt.yaml), when `max_planning` is set to 0. Normally, we set `max_planning` to 5, so we use this [configuration file](https://github.com/Roboskel-Manipulation/manos_graspit_config/blob/master/config/graspit_planner_opt_but_once.yaml) You can experiment with your own configuration based on your needs, but always refer to the ones provided.
 
 * Under normal conditions, do not use the `pose_factor` field of the `EzSceneSetup` service.
 
@@ -123,3 +123,4 @@ Awesome projects that without them, ez_pick_and_place would not be possible:
 * [GraspIt](https://graspit-simulator.github.io/): The feature-rich grasp pose generator and simulator.
 * [graspit-pkgs](https://github.com/JenniferBuehler/graspit-pkgs): The ultimate package for GraspIt/ROS integration.
 * [ivcon](https://github.com/ros/ivcon): The small-but-effective tool to convert your 3D models to all the required formats for MoveIt, GraspIt and beyond.
+* [Blender](https://www.blender.org/): The all-in-one (and open source) 3D modeling software.

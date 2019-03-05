@@ -53,6 +53,10 @@ class EZToolSet():
 
     error_info = ""
 
+    replanning = 0
+
+    already_picked = False
+
     # Move the whole arm to the specified pose
     def move(self, pose):
         self.arm_move_group.set_pose_target(pose)
@@ -134,21 +138,23 @@ class EZToolSet():
     # Open the gripper, move the arm to the grasping pose
     # and grab the object
     def pick(self):
-        # GraspIt assumes maxed out joints, so that's what we do here
-        self.openGripper()
-        time.sleep(1)
-        valid_g = self.discard(self.grasp_poses)
+        if not self.already_picked:
+            # GraspIt assumes maxed out joints, so that's what we do here
+            self.openGripper()
+            time.sleep(1)
+            valid_g = self.discard(self.grasp_poses)
 
-        if len(valid_g) > 0:
-            for j in xrange(len(valid_g[0])):
-                self.arm_move_group.set_start_state_to_current_state()
-                if self.move(valid_g[0][j].pose):
-                    time.sleep(1)
-                    return self.grab(self.pose_n_joint[valid_g[0][j]])
-            self.error_info = "Error while trying to pick the object!"
-        else:
-            self.error_info = "No valid grasps were found!"
-        return False
+            if len(valid_g) > 0:
+                for j in xrange(len(valid_g[0])):
+                    self.arm_move_group.set_start_state_to_current_state()
+                    if self.move(valid_g[0][j].pose):
+                        time.sleep(1)
+                        return self.grab(self.pose_n_joint[valid_g[0][j]])
+                self.error_info = "Error while trying to pick the object!"
+            else:
+                self.error_info = "No valid grasps were found!"
+            return False
+        return True
 
     # Move the arm to the place pose and open the gripper
     # to release the object
@@ -156,7 +162,9 @@ class EZToolSet():
         # Attached objects are removed from the MoveIt scene
         # so we have to query before we attach it
         obj_trans = self.moveit_scene.get_object_poses([self.object_to_grasp])
-        self.attachThis(self.object_to_grasp)
+        if not self.already_picked:
+            self.attachThis(self.object_to_grasp)
+            self.already_picked = True
         time.sleep(1)
         t, sol = self.calcTargetPose(obj_trans)
         if t and sol:
@@ -206,17 +214,27 @@ class EZToolSet():
         self.object_to_grasp = req.graspit_target_object
         self.gripper_move_group_name = req.gripper_move_group
         self.target_place = req.target_place
+        self.replanning = req.max_replanning if req.max_replanning > 0 else 0
 
         # Get bounds for each gipper joint, so we can later use the graspit values
         self.getGripperBounds()
 
-        # Call graspit
-        graspit_grasps = self.graspThis(req.graspit_target_object)
+        res = False
+        while(self.replanning >= 0):
+            self.error_info = ""
+            if not self.already_picked:
+                # Call graspit
+                graspit_grasps = self.graspThis(req.graspit_target_object)
 
-        # Generate grasp poses
-        self.translateGraspIt2MoveIt(graspit_grasps, req.graspit_target_object)
+                # Generate grasp poses
+                self.translateGraspIt2MoveIt(graspit_grasps, req.graspit_target_object)
 
-        return self.uberPlan(), self.error_info
+            res = self.uberPlan()
+            self.replanning -= 1
+            if res:
+                break
+
+        return res, self.error_info
 
     # Graspit bodies are always referenced relatively to the "world" frame,
     # and units are not expressed in meters so translate the user's input

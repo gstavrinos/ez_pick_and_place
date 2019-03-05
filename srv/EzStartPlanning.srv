@@ -2,7 +2,7 @@ string graspit_target_object
 geometry_msgs/PoseStamped target_place
 string arm_move_group
 string gripper_move_group
-bool allow_replanning
+int32 max_replanning
 ---
 bool success
 string info

@@ -82,6 +82,7 @@ def main():
     doit.target_place = target_place
     doit.arm_move_group = "arm"
     doit.gripper_move_group = "gripper"
+    doit.max_replanning = 5
 
     response = start_planning_srv(doit)
 
