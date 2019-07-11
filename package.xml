@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>ez_pick_and_place</name>
-  <version>1.1.0</version>
+  <version>1.1.1</version>
   <description>The ez_pick_and_place package</description>
 
   <maintainer email="stavrinosgeo@gmail.com">George Stavrinos</maintainer>
