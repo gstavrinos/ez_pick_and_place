@@ -6,8 +6,7 @@ import moveit_commander
 
 from grasp_planning_graspit_msgs.srv import AddToDatabase, LoadDatabaseModel
 from ez_pick_and_place.srv import EzSceneSetup, EzStartPlanning
-from manipulation_msgs.srv import GraspPlanning
-from moveit_msgs.srv import GetPositionIK
+from moveit_msgs.srv import GraspPlanning, GetPositionIK
 
 from ez_tools import EZToolSet
 
@@ -16,6 +15,8 @@ def main():
     rospy.init_node("ez_pnp")
 
     ez_tools = EZToolSet()
+
+    ez_tools.debug = rospy.get_param("/ez_pnp/debug", False)
 
     ez_tools.moveit_scene = moveit_commander.PlanningSceneInterface()
     ez_tools.tf2_buffer = tf2_ros.Buffer()

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import tf
 import time
 import numpy
 import rospy
@@ -8,14 +9,10 @@ from math import sqrt, atan2
 from tf.transformations import quaternion_from_euler, quaternion_multiply
 
 from grasp_planning_graspit_msgs.srv import AddToDatabaseRequest, LoadDatabaseModelRequest
-from ez_pick_and_place.srv import EzSceneSetupResponse
+from moveit_msgs.srv import GetPositionIKRequest, GraspPlanning, GetPositionIK
 from geometry_msgs.msg import TransformStamped, PoseStamped, Pose
-from household_objects_database_msgs.msg import DatabaseModelPose
-from manipulation_msgs.msg import GraspableObject
-from moveit_msgs.srv import GetPositionIKRequest
-from manipulation_msgs.srv import GraspPlanning
-
-from moveit_msgs.srv import GetPositionIK
+from ez_pick_and_place.srv import EzSceneSetupResponse
+from moveit_msgs.msg import CollisionObject
 
 class EZToolSet():
 
@@ -57,6 +54,8 @@ class EZToolSet():
 
     already_picked = False
 
+    debug = False
+
     # Move the whole arm to the specified pose
     def move(self, pose):
         self.arm_move_group.set_pose_target(pose)
@@ -91,10 +90,10 @@ class EZToolSet():
         curr_state = self.robot_commander.get_current_state()
         joint_pos = list(curr_state.joint_state.position)
         names = curr_state.joint_state.name
-        for i in xrange(len(graspit_result.name)):
+        for i in xrange(len(graspit_result.joint_names)):
             for j in xrange(len(names)):
-                if graspit_result.name[i] == names[j]:
-                    joint_pos[j] = self.gripper_joint_bounds[names[j]] - abs(graspit_result.position[i] / self.pose_factor)
+                if graspit_result.joint_names[i] == names[j]:
+                    joint_pos[j] = self.gripper_joint_bounds[names[j]] - abs(graspit_result.points[0].positions[i] / self.pose_factor)
                     break
         curr_state.joint_state.position = joint_pos
         return self.moveGripperToState(curr_state)
@@ -110,16 +109,10 @@ class EZToolSet():
 
     # Call graspit for the specified object
     def graspThis(self, object_name):
-        dbmp = DatabaseModelPose()
-        dbmp.model_id = self.ez_objects[object_name][0]
-        dbmp.confidence = 1
-        dbmp.detector_name = "manual_detection"
-        planning_req = GraspPlanning()
-        target = GraspableObject()
-        target.reference_frame_id = "1"
-        target.potential_models = [dbmp]
-        response = self.planning_srv(arm_name = self.gripper_name, target = target)
-
+        target = CollisionObject()
+        target.id = str(self.ez_objects[object_name][0])
+        target.primitive_poses = [self.ez_objects[object_name][1].pose]
+        response = self.planning_srv(group_name = self.gripper_name, target = target)
         return response.grasps
 
     # Shortcut of movegroup's attach_object
@@ -194,6 +187,9 @@ class EZToolSet():
         req.ik_request.avoid_collisions = True
         for p in poses:
             req.ik_request.pose_stamped = p
+            if self.debug:
+                br = tf.TransformBroadcaster()
+                br.sendTransform((p.pose.position.x, p.pose.position.y, p.pose.position.z), (p.pose.orientation.x, p.pose.orientation.y, p.pose.orientation.z, p.pose.orientation.w), rospy.Time.now(), "candidate_grasp_pose", p.header.frame_id)
             k = self.compute_ik_srv(req)
             if k.error_code.val == 1:
                 validp.append(p)

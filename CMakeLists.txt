@@ -10,10 +10,8 @@ find_package(catkin REQUIRED COMPONENTS
   moveit_msgs
   geometry_msgs
   moveit_commander
-  manipulation_msgs
   message_generation
   grasp_planning_graspit_msgs
-  household_objects_database_msgs
 )
 
 add_service_files(
