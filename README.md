@@ -115,9 +115,9 @@ Using Blender you can create and modify 3D models in order to make them useable 
 
 * Also, keep in mind that this factor is taken into account by ez_pick_and_place, so you don't have to worry about it while using it.
 
-* In order for ez_pick_and_place to calculate your grasp poses correctly, you need to specify your gripper's base link. This link is the center of your gripper. If you don't have such link, you will have to create one. As shown in the two test/example scripts, the `pg70_center_link` is used.
+* In the `EzSceneSetup` service when providing your gripper's base link, this link should be the center of your gripper. If you don't have such link, you will have to create one. As shown in the two test/example scripts, the `pg70_center_link` is used.
 
-* If you want to see the candidate pick poses as a tf, set the ez_ppn/debug parameter to true.
+* If you want to see the candidate pick poses as a tf, set the ez_pnp/debug parameter to true.
 
 * Submit issues, pull requests and have fun!
 
